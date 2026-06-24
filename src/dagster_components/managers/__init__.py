@@ -1,8 +1,8 @@
-from dagster_components.managers.earthengine import EarthEngineManager
-from dagster_components.managers.file import (
+from dagster_components.managers.dataframe import (
     DataFrameFileManager,
-    GeoDataFrameFileManager,
 )
+from dagster_components.managers.earthengine import EarthEngineManager
+from dagster_components.managers.geodataframe import GeoDataFrameFileManager
 from dagster_components.managers.json import JSONManager
 from dagster_components.managers.postgres import (
     DataFramePostgresManager,
