@@ -4,7 +4,7 @@ import xarray as xr
 from dagster_components.managers.file import _BaseFileManager
 
 
-class DataFrameFileManager(_BaseFileManager):
+class DataArrayFileManager(_BaseFileManager):
     """Dagster IO manager for reading and writing xarray DataArrays to/from local files.
 
     Supports ``.nc`` file format. For partitioned assets, loading

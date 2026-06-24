@@ -8,8 +8,10 @@ from dagster_components.managers.postgres import (
     DataFramePostgresManager,
     GeoDataFramePostGISManager,
 )
+from dagster_components.managers.xarray import DataArrayFileManager
 
 __all__ = [
+    "DataArrayFileManager",
     "DataFrameFileManager",
     "DataFramePostgresManager",
     "EarthEngineManager",
