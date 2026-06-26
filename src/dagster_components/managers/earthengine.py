@@ -20,7 +20,7 @@ class EarthEngineManager(JSONManager):
     def handle_output(
         self,
         context: dg.OutputContext,
-        obj: ee.image.Image | ee.geometry.Geometry,
+        obj: ee.Image | ee.Geometry | ee.ComputedObject,
     ) -> None:
         """Serialize an Earth Engine object and write it to a JSON file.
 
@@ -34,7 +34,7 @@ class EarthEngineManager(JSONManager):
     def load_input(
         self,
         context: dg.InputContext,
-    ) -> ee.image.Image | ee.geometry.Geometry:
+    ) -> ee.Image | ee.Geometry | ee.ComputedObject:
         """Read a JSON file and deserialize it into an Earth Engine object.
 
         Args:
@@ -50,8 +50,8 @@ class EarthEngineManager(JSONManager):
         serialized = self._read_serialized_json(context)
         deserialized = ee.deserializer.decode(serialized)
 
-        if isinstance(deserialized, (ee.image.Image, ee.geometry.Geometry)):
+        if isinstance(deserialized, (ee.Image, ee.Geometry, ee.ComputedObject)):
             return deserialized
 
-        err: str = f"Unsupported type: {type(deserialized)}"
+        err = f"Unsupported type: {type(deserialized)}"
         raise TypeError(err)
