@@ -1,0 +1,9 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "cfc-dagster-utils",
+      "include-component-in-tag": false
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import dagster as dg
 import geopandas as gpd
 
-from dagster_components.managers.file import _BaseFileManager
+from cfc_dagster_utils.managers.file import _BaseFileManager
 
 
 class GeoDataFrameFileManager(_BaseFileManager):

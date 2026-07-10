@@ -4,7 +4,7 @@ from typing import Literal, overload
 
 import dagster as dg
 
-from dagster_components.types import DFType, T
+from cfc_dagster_utils.types import DFType, T
 
 
 class PathResource(dg.ConfigurableResource):

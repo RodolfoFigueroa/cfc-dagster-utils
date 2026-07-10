@@ -2,7 +2,7 @@ import json
 
 import dagster as dg
 
-from dagster_components.managers.file import _BaseFileManager
+from cfc_dagster_utils.managers.file import _BaseFileManager
 
 
 class JSONManager(_BaseFileManager):

@@ -3,7 +3,7 @@ import json
 import dagster as dg
 import ee
 
-from dagster_components.managers.json import JSONManager
+from cfc_dagster_utils.managers.json import JSONManager
 
 
 class EarthEngineManager(JSONManager):

@@ -6,8 +6,8 @@ import pandas as pd
 import sqlalchemy
 from dagster._config.pythonic_config.resource import TResValue
 
-from dagster_components.resources import PostgresResource
-from dagster_components.types import DFType
+from cfc_dagster_utils.resources import PostgresResource
+from cfc_dagster_utils.types import DFType
 
 
 class _DataFrameBasePostgresManager(

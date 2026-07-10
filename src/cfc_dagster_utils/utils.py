@@ -3,7 +3,7 @@ from typing import Literal
 
 import pandas as pd
 
-from dagster_components.types import BoundDFType
+from cfc_dagster_utils.types import BoundDFType
 
 
 def cast_all_columns_to_numeric(
