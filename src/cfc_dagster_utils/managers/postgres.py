@@ -122,7 +122,7 @@ class _DataFrameBasePostgresManager(
         """
         table = context.definition_metadata["table_name"]
 
-        with self.postgres_resource.connect() as conn:
+        with self.postgres_resource.begin() as conn:
             self.write_table(obj, table, conn)
 
             if "primary_key" in context.definition_metadata:
@@ -162,8 +162,6 @@ class _DataFrameBasePostgresManager(
                             """,
                         ),
                     )
-
-            conn.commit()
 
     def load_input(self, context: dg.InputContext) -> DFType:
         """Load a DataFrame from the PostgreSQL table written by the upstream output.
