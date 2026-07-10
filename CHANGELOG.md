@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.2.0...v0.2.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* Improve transaction handling ([acdabfb](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/acdabfb0bba60a470e27294673ea67a13bce10c8))
+
 ## [0.2.0](https://github.com/RodolfoFigueroa/dagster-components/compare/v0.1.0...v0.2.0) (2026-07-10)
 
 
