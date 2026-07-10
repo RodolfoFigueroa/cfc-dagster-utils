@@ -1,4 +1,4 @@
-from typing import Any, Generic
+from typing import Any, Generic, Literal
 
 import dagster as dg
 import geopandas as gpd
@@ -14,6 +14,7 @@ class _DataFrameBasePostgresManager(
     dg.ConfigurableIOManager,
     Generic[DFType, TResValue],
 ):
+    if_exists: Literal["fail", "append", "replace", "cascade_replace"]
     """Base class for Dagster IO managers that read and write DataFrames to/from
     PostgreSQL.
 
@@ -23,6 +24,12 @@ class _DataFrameBasePostgresManager(
     Args:
         postgres_resource: A Dagster resource dependency providing a PostgreSQL
             connection.
+        if_exists: Behavior when the target table already exists. Options are:
+            - ``"fail"``: Raise an error (default).
+            - ``"append"``: Append data to the existing table.
+            - ``"replace"``: Drop the existing table and create a new one.
+            - ``"cascade_replace"``: Drop the existing table and any dependent objects,
+              then create a new table.
 
     Attributes:
         postgres_resource: A Dagster resource dependency providing a PostgreSQL
@@ -30,6 +37,19 @@ class _DataFrameBasePostgresManager(
     """
 
     postgres_resource: dg.ResourceDependency[PostgresResource]
+
+    def _prepare_for_write(
+        self, conn: sqlalchemy.Connection, table_name: str
+    ) -> Literal["fail", "append", "replace"]:
+        if self.if_exists != "cascade_replace":
+            return self.if_exists
+
+        inspector = sqlalchemy.inspect(conn)
+        if not inspector.has_table(table_name):
+            return "replace"
+
+        conn.execute(sqlalchemy.text(f"DROP TABLE {table_name} CASCADE;"))
+        return "replace"
 
     def write_table(
         self,
@@ -208,7 +228,8 @@ class DataFramePostgresManager(_DataFrameBasePostgresManager[pd.DataFrame, Any])
             table_name: The name of the destination table.
             conn: An active SQLAlchemy database connection.
         """
-        df.to_sql(table_name, conn, if_exists="replace", index=False)
+        if_exists = self._prepare_for_write(conn, table_name)
+        df.to_sql(table_name, conn, if_exists=if_exists, index=False)
 
     def load_table(
         self,
@@ -257,7 +278,8 @@ class GeoDataFramePostGISManager(_DataFrameBasePostgresManager[gpd.GeoDataFrame,
             table_name: The name of the destination table.
             conn: An active SQLAlchemy database connection.
         """
-        df.to_postgis(table_name, conn, if_exists="replace")
+        if_exists = self._prepare_for_write(conn, table_name)
+        df.to_postgis(table_name, conn, if_exists=if_exists)
 
     def load_table(
         self,
