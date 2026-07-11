@@ -3,14 +3,12 @@ name = "cfc-dagster-utils"
 version = "0.2.1"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "dagster>=1",
-    "earthengine-api>=1",
-    "geopandas>=1",
-    "pandas>=2",
-    "sqlalchemy>=2",
-    "xarray>=2026.4.0",
-]
+dependencies = ["geopandas>=1", "pandas>=2", "sqlalchemy>=2"]
+
+[project.optional-dependencies]
+dagster = ["dagster>=1"]
+earthengine = ["earthengine-api>=1"]
+xarray = ["xarray>=2026.4.0"]
 
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]
