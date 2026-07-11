@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.2.1...v0.3.0) (2026-07-11)
+
+
+### Features
+
+* Add optional dep testing ([ce5ecb3](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/ce5ecb3a9c21ac9de0823405cfed5b724a8d7043))
+
 ## [0.2.1](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.2.0...v0.2.1) (2026-07-10)
 
 
