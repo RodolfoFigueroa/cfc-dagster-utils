@@ -1,7 +1,17 @@
-import dagster as dg
 import geopandas as gpd
 
+from cfc_dagster_utils._optional import raise_optional_dependency_error
 from cfc_dagster_utils.managers.file import _BaseFileManager
+
+try:
+    import dagster as dg
+except ModuleNotFoundError as error:
+    raise_optional_dependency_error(
+        error,
+        import_name="dagster",
+        dependency_name="dagster",
+        extra="dagster",
+    )
 
 
 class GeoDataFrameFileManager(_BaseFileManager):

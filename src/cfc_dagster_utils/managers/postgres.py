@@ -1,13 +1,24 @@
 from typing import Any, Generic, Literal
 
-import dagster as dg
 import geopandas as gpd
 import pandas as pd
 import sqlalchemy
-from dagster._config.pythonic_config.resource import TResValue
 
+from cfc_dagster_utils._optional import raise_optional_dependency_error
 from cfc_dagster_utils.resources import PostgresResource
 from cfc_dagster_utils.types import DFType
+
+try:
+    import dagster as dg
+except ModuleNotFoundError as error:
+    raise_optional_dependency_error(
+        error,
+        import_name="dagster",
+        dependency_name="dagster",
+        extra="dagster",
+    )
+
+from dagster._config.pythonic_config.resource import TResValue
 
 
 class _DataFrameBasePostgresManager(

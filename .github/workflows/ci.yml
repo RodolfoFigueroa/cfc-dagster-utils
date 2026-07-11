@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync --locked --all-extras
+      - name: Check formatting
+        run: uvx ruff@0.15.20 format --check
+      - name: Lint
+        run: uvx ruff@0.15.20 check
+      - name: Type check
+        run: uvx ty@0.0.56 check
+      - name: Test
+        run: uv run --locked pytest
+
+  optional-dependencies:
+    name: Optional dependency matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - name: Build wheel
+        run: uv build --wheel
+      - name: Test optional dependency matrix
+        run: uv run python scripts/test_optional_dependency_matrix.py

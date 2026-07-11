@@ -2,9 +2,18 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, overload
 
-import dagster as dg
-
+from cfc_dagster_utils._optional import raise_optional_dependency_error
 from cfc_dagster_utils.types import DFType, T
+
+try:
+    import dagster as dg
+except ModuleNotFoundError as error:
+    raise_optional_dependency_error(
+        error,
+        import_name="dagster",
+        dependency_name="dagster",
+        extra="dagster",
+    )
 
 
 class PathResource(dg.ConfigurableResource):

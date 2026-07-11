@@ -1,8 +1,20 @@
 from collections.abc import Generator
 from contextlib import contextmanager
 
-import dagster as dg
 import sqlalchemy
+
+from cfc_dagster_utils._optional import raise_optional_dependency_error
+
+try:
+    import dagster as dg
+except ModuleNotFoundError as error:
+    raise_optional_dependency_error(
+        error,
+        import_name="dagster",
+        dependency_name="dagster",
+        extra="dagster",
+    )
+
 from pydantic import PrivateAttr
 
 
