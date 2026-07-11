@@ -90,9 +90,11 @@ dagster = [
     { name = "dagster" },
 ]
 earthengine = [
+    { name = "dagster" },
     { name = "earthengine-api" },
 ]
 xarray = [
+    { name = "dagster" },
     { name = "xarray" },
 ]
 
@@ -107,6 +109,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dagster", marker = "extra == 'dagster'", specifier = ">=1" },
+    { name = "dagster", marker = "extra == 'earthengine'", specifier = ">=1" },
+    { name = "dagster", marker = "extra == 'xarray'", specifier = ">=1" },
     { name = "earthengine-api", marker = "extra == 'earthengine'", specifier = ">=1" },
     { name = "geopandas", specifier = ">=1" },
     { name = "pandas", specifier = ">=2" },
