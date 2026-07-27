@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.4.0...v0.4.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* Fix stale import in tests ([6f49a28](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/6f49a280ad7313032901f550b607c7c6038c8b74))
+* Move component path ([7ed4231](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/7ed42316422ea4aeb00ddab8062c6cd52ca8b089))
+
 ## [0.4.0](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.3.0...v0.4.0) (2026-07-27)
 
 
