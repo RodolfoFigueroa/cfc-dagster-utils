@@ -22,7 +22,7 @@ OPTIONAL_MODULES = {
     "cfc_dagster_utils.managers.geodataframe": "dagster",
     "cfc_dagster_utils.managers.json": "dagster",
     "cfc_dagster_utils.managers.postgres": "dagster",
-    "cfc_dagster_utils.managers.dvc": "dvc",
+    "cfc_dagster_utils.components.dvc": "dvc",
     "cfc_dagster_utils.managers.earthengine": "earthengine",
     "cfc_dagster_utils.managers.xarray": "xarray",
 }
