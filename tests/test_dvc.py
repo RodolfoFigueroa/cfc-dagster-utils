@@ -7,8 +7,8 @@ from unittest.mock import Mock
 import dagster as dg
 import pytest
 
-import cfc_dagster_utils.managers.dvc as dvc_module
-from cfc_dagster_utils.managers.dvc import DvcInputComponent
+import cfc_dagster_utils.components.dvc as dvc_module
+from cfc_dagster_utils.components.dvc import DvcInputComponent
 
 pytestmark = pytest.mark.filterwarnings(
     "ignore:Function `multi_observable_source_asset` is currently in beta"
