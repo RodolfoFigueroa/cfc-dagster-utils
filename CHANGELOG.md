@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.3.0...v0.4.0) (2026-07-27)
+
+
+### Features
+
+* Add DVC asset ([988d0c8](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/988d0c86f873006280f03c4161c4f6ab867dadbb))
+
 ## [0.3.0](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.2.1...v0.3.0) (2026-07-11)
 
 
