@@ -10,6 +10,7 @@ from cfc_dagster_utils._optional import raise_optional_dependency_error
 EXTRAS_ENV_VAR = "CFC_TEST_EXTRAS"
 DEPENDENCY_MODULES = {
     "dagster": "dagster",
+    "dvc": "dvc",
     "earthengine": "ee",
     "xarray": "xarray",
 }
@@ -21,6 +22,7 @@ OPTIONAL_MODULES = {
     "cfc_dagster_utils.managers.geodataframe": "dagster",
     "cfc_dagster_utils.managers.json": "dagster",
     "cfc_dagster_utils.managers.postgres": "dagster",
+    "cfc_dagster_utils.managers.dvc": "dvc",
     "cfc_dagster_utils.managers.earthengine": "earthengine",
     "cfc_dagster_utils.managers.xarray": "xarray",
 }
@@ -36,7 +38,7 @@ def _available_extras() -> set[str]:
         }
 
     available = set(filter(None, requested.split(",")))
-    if available & {"earthengine", "xarray"}:
+    if available & {"dvc", "earthengine", "xarray"}:
         available.add("dagster")
     return available
 

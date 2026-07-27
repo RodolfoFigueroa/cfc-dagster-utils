@@ -13,12 +13,13 @@ EXTRAS_ENV_VAR = "CFC_TEST_EXTRAS"
 MATRIX = (
     ("base", ()),
     ("dagster", ("dagster",)),
+    ("dvc", ("dvc",)),
     ("earthengine", ("earthengine",)),
     ("xarray", ("xarray",)),
     ("dagster-earthengine", ("dagster", "earthengine")),
     ("dagster-xarray", ("dagster", "xarray")),
     ("earthengine-xarray", ("earthengine", "xarray")),
-    ("all", ("dagster", "earthengine", "xarray")),
+    ("all", ("dagster", "dvc", "earthengine", "xarray")),
 )
 
 
