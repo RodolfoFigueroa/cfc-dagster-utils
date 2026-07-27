@@ -1,5 +1,8 @@
 on:
   workflow_call:
+    secrets:
+      release_please_token:
+        required: true
 
 permissions:
   contents: write
@@ -12,7 +15,39 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          token: ${{ secrets.release_please_token }}
+      - name: Check out release pull request
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          token: ${{ secrets.release_please_token }}
+      - name: Install uv and Python
+        if: steps.release.outputs.prs_created == 'true'
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - name: Update uv lockfile
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          RELEASE_PR_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: |
+          uv lock
+
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock is already up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "chore: refresh uv.lock for release"
+          git push origin "HEAD:${RELEASE_PR_BRANCH}"
