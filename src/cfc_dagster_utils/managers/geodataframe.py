@@ -44,6 +44,8 @@ class GeoDataFrameFileManager(_BaseFileManager):
             obj.to_file(fpath, driver="GPKG")
         elif self.extension == ".geoparquet":
             obj.to_parquet(fpath, index=True)
+        elif self.extension == ".geojson":
+            obj.to_file(fpath, driver="GeoJSON")
         else:
             err = f"Unsupported file extension: {self.extension}"
             raise ValueError(err)
@@ -73,6 +75,9 @@ class GeoDataFrameFileManager(_BaseFileManager):
 
         if self.extension == ".geoparquet":
             return self._dispatch_multiple_partitions(fpath, gpd.read_parquet)
+
+        if self.extension == ".geojson":
+            return self._dispatch_multiple_partitions(fpath, gpd.read_file)
 
         err = f"Unsupported file extension: {self.extension}"
         raise ValueError(err)
