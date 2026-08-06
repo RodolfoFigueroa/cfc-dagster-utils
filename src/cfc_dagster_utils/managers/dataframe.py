@@ -97,5 +97,13 @@ class DataFrameFileManager(_BaseFileManager):
                 fpath, lambda p: pd.read_csv(p, index_col=0)
             )
 
-        err = f"Unsupported file extension: {self.extension}"
+        if self.engine == "parquet":
+            return self._dispatch_multiple_partitions(fpath, pd.read_parquet)
+
+        if self.engine == "csv":
+            return self._dispatch_multiple_partitions(
+                fpath, lambda p: pd.read_csv(p, index_col=0)
+            )
+
+        err = f"Unsupported file extension: {self.extension} and engine: {self.engine}"
         raise ValueError(err)
