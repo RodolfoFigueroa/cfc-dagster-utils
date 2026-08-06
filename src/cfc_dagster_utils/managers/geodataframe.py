@@ -1,7 +1,7 @@
 import geopandas as gpd
 
 from cfc_dagster_utils._optional import raise_optional_dependency_error
-from cfc_dagster_utils.managers.file import _BaseFileManager
+from cfc_dagster_utils.managers.file import _BaseFileManager, _ResolvedFilePath
 
 try:
     import dagster as dg
@@ -50,8 +50,8 @@ class GeoDataFrameFileManager(_BaseFileManager):
             err = f"Unsupported file extension: {self.extension}"
             raise ValueError(err)
 
-    def load_input(
-        self, context: dg.InputContext
+    def _load_from_path(
+        self, fpath: _ResolvedFilePath
     ) -> gpd.GeoDataFrame | dict[str, gpd.GeoDataFrame]:
         """Load a GeoDataFrame (or a mapping of GeoDataFrames) from a file.
 
@@ -60,7 +60,7 @@ class GeoDataFrameFileManager(_BaseFileManager):
         GeoDataFrame.
 
         Args:
-            context: The Dagster input context used to resolve the file path(s).
+            fpath: A single asset path or a mapping of partition keys to paths.
 
         Returns:
             A single GeoDataFrame or a dict mapping partition key to GeoDataFrame.
@@ -68,8 +68,6 @@ class GeoDataFrameFileManager(_BaseFileManager):
         Raises:
             ValueError: If ``extension`` is not ``.gpkg`` or ``.geoparquet``.
         """
-        fpath = self._get_path(context, allow_multiple_partitions=True)
-
         if self.extension == ".gpkg":
             return self._dispatch_multiple_partitions(fpath, gpd.read_file)
 

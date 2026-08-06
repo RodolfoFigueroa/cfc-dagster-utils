@@ -16,6 +16,9 @@ except ModuleNotFoundError as error:
     )
 
 
+_ResolvedFilePath = Path | dict[str, Path]
+
+
 class PathResource(dg.ConfigurableResource):
     """Dagster resource providing a base output directory path for file-based IO
     managers.
@@ -34,7 +37,7 @@ class _BaseFileManager(dg.ConfigurableIOManager):
     """Base class for Dagster IO managers that read/write to/from files.
 
     Handles path resolution for both partitioned and non-partitioned assets.
-    Subclasses must implement ``handle_output`` and ``load_input``.
+    Subclasses must implement ``handle_output`` and ``_load_from_path``.
 
     Args:
         path_resource: A resource dependency providing the root output directory path.
@@ -229,10 +232,42 @@ class _BaseFileManager(dg.ConfigurableIOManager):
         """
         raise NotImplementedError
 
-    def load_input(self, context: dg.InputContext) -> DFType:
-        """Load an object from a file. Must be implemented by subclasses.
+    def load_input(self, context: dg.InputContext) -> object:
+        """Load an asset as a path or deserialize it through the subclass.
+
+        A downstream input annotated as ``pathlib.Path`` receives the resolved file
+        path directly. Other input types are delegated to ``_load_from_path``.
+
+        Args:
+            context: The Dagster input context used to resolve the asset path.
+
+        Returns:
+            The resolved path for a ``Path`` input, or the deserialized object returned
+            by the subclass.
 
         Raises:
-            NotImplementedError: Always, since this is an abstract method.
+            ValueError: If a single ``Path`` is requested for multiple partitions.
+        """
+        fpath = self._get_path(context, allow_multiple_partitions=True)
+
+        if context.dagster_type.typing_type is Path:
+            if isinstance(fpath, dict):
+                err = "A Path input requires exactly one upstream asset partition."
+                raise ValueError(err)
+            return fpath
+
+        return self._load_from_path(fpath)
+
+    def _load_from_path(self, fpath: _ResolvedFilePath) -> object:
+        """Deserialize an object from one or more resolved file paths.
+
+        Subclasses must implement this hook instead of overriding ``load_input``.
+
+        Args:
+            fpath: A single asset path or a mapping of partition keys to paths.
+
+        Raises:
+            NotImplementedError: Always, since this method must be implemented by
+                subclasses.
         """
         raise NotImplementedError

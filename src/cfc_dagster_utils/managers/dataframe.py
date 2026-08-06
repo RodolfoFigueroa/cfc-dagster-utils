@@ -3,7 +3,7 @@ from enum import StrEnum
 import pandas as pd
 
 from cfc_dagster_utils._optional import raise_optional_dependency_error
-from cfc_dagster_utils.managers.file import _BaseFileManager
+from cfc_dagster_utils.managers.file import _BaseFileManager, _ResolvedFilePath
 
 try:
     import dagster as dg
@@ -72,8 +72,8 @@ class DataFrameFileManager(_BaseFileManager):
         elif self.engine == "csv":
             obj.to_csv(fpath, index=True)
 
-    def load_input(
-        self, context: dg.InputContext
+    def _load_from_path(
+        self, fpath: _ResolvedFilePath
     ) -> pd.DataFrame | dict[str, pd.DataFrame]:
         """Load a pandas DataFrame (or a mapping of DataFrames) from a file.
 
@@ -81,7 +81,7 @@ class DataFrameFileManager(_BaseFileManager):
         For multi-partition inputs, returns a dict mapping partition key to DataFrame.
 
         Args:
-            context: The Dagster input context used to resolve the file path(s).
+            fpath: A single asset path or a mapping of partition keys to paths.
 
         Returns:
             A single DataFrame or a dict mapping partition key to DataFrame.
@@ -89,8 +89,6 @@ class DataFrameFileManager(_BaseFileManager):
         Raises:
             ValueError: If ``extension`` is not ``.parquet`` or ``.csv``.
         """
-        fpath = self._get_path(context, allow_multiple_partitions=True)
-
         if self.extension == ".parquet":
             return self._dispatch_multiple_partitions(fpath, pd.read_parquet)
 

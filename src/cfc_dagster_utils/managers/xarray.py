@@ -10,7 +10,7 @@ except ModuleNotFoundError as error:
         extra="xarray",
     )
 
-from cfc_dagster_utils.managers.file import _BaseFileManager
+from cfc_dagster_utils.managers.file import _BaseFileManager, _ResolvedFilePath
 
 try:
     import xarray as xr
@@ -55,8 +55,8 @@ class DataArrayFileManager(_BaseFileManager):
             err = f"Unsupported file extension: {self.extension}"
             raise ValueError(err)
 
-    def load_input(
-        self, context: dg.InputContext
+    def _load_from_path(
+        self, fpath: _ResolvedFilePath
     ) -> xr.DataArray | dict[str, xr.DataArray]:
         """Load a xarray DataArray (or a mapping of DataArrays) from a file.
 
@@ -64,7 +64,7 @@ class DataArrayFileManager(_BaseFileManager):
         For multi-partition inputs, returns a dict mapping partition key to DataArray.
 
         Args:
-            context: The Dagster input context used to resolve the file path(s).
+            fpath: A single asset path or a mapping of partition keys to paths.
 
         Returns:
             A single DataArray or a dict mapping partition key to DataArray.
@@ -72,8 +72,6 @@ class DataArrayFileManager(_BaseFileManager):
         Raises:
             ValueError: If ``extension`` is not ``.nc``.
         """
-        fpath = self._get_path(context, allow_multiple_partitions=True)
-
         if self.extension == ".nc":
             return self._dispatch_multiple_partitions(fpath, xr.open_dataarray)
 

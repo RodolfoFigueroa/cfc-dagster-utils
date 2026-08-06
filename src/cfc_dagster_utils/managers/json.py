@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from cfc_dagster_utils._optional import raise_optional_dependency_error
 from cfc_dagster_utils.managers.file import _BaseFileManager
@@ -17,8 +18,8 @@ except ModuleNotFoundError as error:
 class JSONManager(_BaseFileManager):
     """Dagster IO manager for reading and writing JSON files.
 
-    Subclasses must implement ``handle_output`` and ``load_input`` to define how objects
-    are serialized to and deserialized from a ``dict`` before JSON encoding.
+    Subclasses must implement ``handle_output`` and ``_load_from_path`` to define how
+    objects are serialized to and deserialized from a ``dict`` before JSON encoding.
 
     Args:
         path_resource: A resource dependency providing the root output directory path.
@@ -53,24 +54,15 @@ class JSONManager(_BaseFileManager):
         with fpath.open("w", encoding="utf8") as f:
             json.dump(serialized, f)
 
-    def _read_serialized_json(self, context: dg.InputContext) -> dict:
+    def _read_serialized_json(self, fpath: Path) -> dict:
         """Read a JSON file and return its contents as a dict.
 
         Args:
-            context: The Dagster input context used to resolve the input file path.
+            fpath: The resolved input file path.
 
         Returns:
             The deserialized JSON contents.
 
-        Raises:
-            TypeError: If the resolved path is a dict (i.e. multiple partitions are
-                active), since JSONManager does not support multiple partitions.
         """
-        fpath = self._get_path(context)
-
-        if isinstance(fpath, dict):
-            err = "JSONManager does not support multiple partitions."
-            raise TypeError(err)
-
         with fpath.open(encoding="utf8") as f:
             return json.load(f)

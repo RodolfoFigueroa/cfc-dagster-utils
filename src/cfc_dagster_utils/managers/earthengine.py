@@ -12,6 +12,7 @@ except ModuleNotFoundError as error:
         extra="earthengine",
     )
 
+from cfc_dagster_utils.managers.file import _ResolvedFilePath
 from cfc_dagster_utils.managers.json import JSONManager
 
 try:
@@ -50,23 +51,27 @@ class EarthEngineManager(JSONManager):
         serialized = json.loads(obj.serialize())
         self._write_serialized_json(serialized, context)
 
-    def load_input(
+    def _load_from_path(
         self,
-        context: dg.InputContext,
+        fpath: _ResolvedFilePath,
     ) -> ee.Image | ee.Geometry | ee.ComputedObject:
         """Read a JSON file and deserialize it into an Earth Engine object.
 
         Args:
-            context: The Dagster input context used to resolve the input file path.
+            fpath: The resolved input file path.
 
         Returns:
             The deserialized Earth Engine image or geometry.
 
         Raises:
-            TypeError: If the deserialized object is not an ``ee.image.Image`` or
-                ``ee.geometry.Geometry``.
+            TypeError: If multiple partitions were resolved or the deserialized object
+                is not an Earth Engine computed object.
         """
-        serialized = self._read_serialized_json(context)
+        if isinstance(fpath, dict):
+            err = "JSONManager does not support multiple partitions."
+            raise TypeError(err)
+
+        serialized = self._read_serialized_json(fpath)
         deserialized = ee.deserializer.decode(serialized)
 
         if isinstance(deserialized, (ee.Image, ee.Geometry, ee.ComputedObject)):
