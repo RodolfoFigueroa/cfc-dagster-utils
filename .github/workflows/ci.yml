@@ -46,16 +46,14 @@ jobs:
       - name: Test optional dependency matrix
         run: uv run python scripts/test_optional_dependency_matrix.py
 
-  release-please:
-    name: Release Please
+  semantic-release:
+    name: Semantic Release
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs:
       - quality
       - optional-dependencies
     permissions:
       contents: write
-      issues: write
-      pull-requests: write
-    uses: ./.github/workflows/release-please.yml
+    uses: ./.github/workflows/semantic-release.yml
     secrets:
-      release_please_token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      semantic_release_token: ${{ secrets.RELEASE_PLEASE_TOKEN }}

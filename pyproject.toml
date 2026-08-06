@@ -30,3 +30,12 @@ dev = [
 select = ["ALL"]
 ignore = ["D", "COM812", "CPY001"]
 per-file-ignores = { "tests/**/*.py" = ["S101"] }
+
+[tool.semantic_release]
+build_command = "uv lock"
+commit_message = "chore(release): {version} [skip ci]"
+version_toml = ["pyproject.toml:project.version"]
+
+[tool.semantic_release.branches.master]
+match = "master"
+prerelease = false

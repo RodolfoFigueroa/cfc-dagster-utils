@@ -1,5 +1,7 @@
 # Changelog
 
+<!-- version list -->
+
 ## [0.4.2](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.4.1...v0.4.2) (2026-08-06)
 
 
