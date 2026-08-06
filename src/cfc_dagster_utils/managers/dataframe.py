@@ -1,3 +1,5 @@
+from typing import Literal
+
 import pandas as pd
 
 from cfc_dagster_utils._optional import raise_optional_dependency_error
@@ -22,8 +24,13 @@ class DataFrameFileManager(_BaseFileManager):
 
     Args:
         path_resource: A resource dependency providing the root output directory path.
-        extension: The file extension to use. Must be ``.parquet`` or ``.csv``.
+        extension: The file extension to use. Anything other than ``.parquet``
+            or ``.csv`` requires manually specifying ``engine``.
+        engine: The engine to use for reading/writing files. If not specified, defaults
+            to the default engine for the given file format, if applicable.
     """
+
+    engine: Literal["csv", "parquet"] | None = None
 
     def handle_output(self, context: dg.OutputContext, obj: pd.DataFrame) -> None:
         """Write a pandas DataFrame to a file.
@@ -35,8 +42,17 @@ class DataFrameFileManager(_BaseFileManager):
             obj: The pandas DataFrame to write.
 
         Raises:
-            ValueError: If ``extension`` is not ``.parquet`` or ``.csv``.
+            ValueError: If ``extension`` is not ``.parquet`` or ``.csv`` and
+                ``engine`` is not specified.
         """
+        if self.extension not in [".parquet", ".csv"]:
+            if self.engine is None:
+                err = "If extension is not .parquet or .csv, engine must be specified."
+                raise ValueError(err)
+            if self.engine not in ["csv", "parquet"]:
+                err = f"Unsupported engine: {self.engine}. Must be 'csv' or 'parquet'."
+                raise ValueError(err)
+
         fpath = self._get_path(context)
         fpath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -44,9 +60,10 @@ class DataFrameFileManager(_BaseFileManager):
             obj.to_parquet(fpath)
         elif self.extension == ".csv":
             obj.to_csv(fpath, index=True)
-        else:
-            err = f"Unsupported file extension: {self.extension}"
-            raise ValueError(err)
+        elif self.engine == "parquet":
+            obj.to_parquet(fpath)
+        elif self.engine == "csv":
+            obj.to_csv(fpath, index=True)
 
     def load_input(
         self, context: dg.InputContext
