@@ -1,4 +1,4 @@
-from typing import Literal
+from enum import StrEnum
 
 import pandas as pd
 
@@ -16,6 +16,13 @@ except ModuleNotFoundError as error:
     )
 
 
+class DataFrameEngine(StrEnum):
+    """Supported storage formats for custom DataFrame file extensions."""
+
+    csv = "csv"
+    parquet = "parquet"
+
+
 class DataFrameFileManager(_BaseFileManager):
     """Dagster IO manager for reading and writing pandas DataFrames to/from local files.
 
@@ -30,7 +37,7 @@ class DataFrameFileManager(_BaseFileManager):
             to the default engine for the given file format, if applicable.
     """
 
-    engine: Literal["csv", "parquet"] | None = None
+    engine: DataFrameEngine | None = None
 
     def handle_output(self, context: dg.OutputContext, obj: pd.DataFrame) -> None:
         """Write a pandas DataFrame to a file.
