@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-08-06)
+
+### Features
+
+- Add raw path return functionality
+  ([`d8c1dd5`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/d8c1dd5767594ad6487c27151f14b3a47425a16b))
+
+
 ## v1.0.2 (2026-08-06)
 
 ### Bug Fixes
