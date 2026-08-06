@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.1 (2026-08-06)
+
+### Bug Fixes
+
+- Fix file read with custom engine
+  ([`26e3025`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/26e3025c6577788ff5a3ba8d242e504f8fba5be9))
+
+
 ## v1.1.0 (2026-08-06)
 
 ### Features
