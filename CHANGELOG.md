@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.0.1 (2026-08-06)
+
+### Bug Fixes
+
+- Add custom engine to DataFrame writer
+  ([`7ad0c20`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/7ad0c202a3ccb993a98c8fb1282f219604927604))
+
+- Fix stale lockfile
+  ([`a7059a8`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/a7059a87b2eaede13d33ca577c1fdcab9bd6c98f))
+
+
 ## v1.0.0 (2026-08-06)
 
 ### Chores
