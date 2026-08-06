@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.4.1...v0.4.2) (2026-08-06)
+
+
+### Bug Fixes
+
+* Add GeoJSON format to gdf writer ([63191ee](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/63191ee8fcc23be87ced1531dddf43ef833bf182))
+
 ## [0.4.1](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.4.0...v0.4.1) (2026-07-27)
 
 
