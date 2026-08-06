@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.2 (2026-08-06)
+
+### Bug Fixes
+
+- Fix unsupported dagster type
+  ([`8bcd3cc`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/8bcd3ccc91b34654fa2730ae1aa657e099d2817a))
+
+
 ## v1.0.1 (2026-08-06)
 
 ### Bug Fixes
