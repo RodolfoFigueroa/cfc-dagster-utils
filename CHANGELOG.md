@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.0 (2026-08-06)
+
+### Chores
+
+- Setup Semantic Release
+  ([`bb7c2cd`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/bb7c2cd913f586413d8ffd46b499247749c565f9))
+
+
 ## [0.4.2](https://github.com/RodolfoFigueroa/cfc-dagster-utils/compare/v0.4.1...v0.4.2) (2026-08-06)
 
 
