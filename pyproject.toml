@@ -32,7 +32,10 @@ ignore = ["D", "COM812", "CPY001"]
 per-file-ignores = { "tests/**/*.py" = ["S101"] }
 
 [tool.semantic_release]
-build_command = "uv lock"
+build_command = """
+uv lock --upgrade-package "$PACKAGE_NAME"
+git add uv.lock
+"""
 commit_message = "chore(release): {version} [skip ci]"
 version_toml = ["pyproject.toml:project.version"]
 
