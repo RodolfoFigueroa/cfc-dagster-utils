@@ -1,4 +1,5 @@
-from typing import Any, Generic, Literal
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol
 
 import geopandas as gpd
 import pandas as pd
@@ -6,7 +7,7 @@ import sqlalchemy
 
 from cfc_dagster_utils._optional import raise_optional_dependency_error
 from cfc_dagster_utils.resources import PostgresResource
-from cfc_dagster_utils.types import DFType
+from cfc_dagster_utils.types import PostgresRelation, PostgresTableSpec
 
 try:
     import dagster as dg
@@ -15,302 +16,203 @@ except ModuleNotFoundError as error:
         error,
         import_name="dagster",
         dependency_name="dagster",
-        extra="dagster",
+        extra="postgres",
     )
 
-from dagster._config.pythonic_config.resource import TResValue
+
+class _FrameHandler(Protocol):
+    def load(
+        self,
+        conn: sqlalchemy.Connection,
+        relation: PostgresRelation,
+        columns: tuple[str, ...] | None,
+        spec: PostgresTableSpec,
+    ) -> pd.DataFrame: ...
 
 
-class _DataFrameBasePostgresManager(
-    dg.ConfigurableIOManager,
-    Generic[DFType, TResValue],
-):
-    if_exists: Literal["fail", "append", "replace", "cascade_replace"]
-    """Base class for Dagster IO managers that read and write DataFrames to/from
-    PostgreSQL.
+def _qualified_name(
+    conn: sqlalchemy.Connection,
+    relation: PostgresRelation,
+) -> str:
+    preparer = conn.dialect.identifier_preparer
+    return f"{preparer.quote_schema(relation.schema)}.{preparer.quote(relation.name)}"
 
-    Subclasses must implement ``write_table`` and ``load_table`` to define how data is
-    serialized and deserialized for a specific DataFrame type.
 
-    Args:
-        postgres_resource: A Dagster resource dependency providing a PostgreSQL
-            connection.
-        if_exists: Behavior when the target table already exists. Options are:
-            - ``"fail"``: Raise an error (default).
-            - ``"append"``: Append data to the existing table.
-            - ``"replace"``: Drop the existing table and create a new one.
-            - ``"cascade_replace"``: Drop the existing table and any dependent objects,
-              then create a new table.
+def _select_sql(
+    conn: sqlalchemy.Connection,
+    relation: PostgresRelation,
+    columns: tuple[str, ...] | None,
+) -> sqlalchemy.TextClause:
+    if columns is None:
+        selected = "*"
+    else:
+        preparer = conn.dialect.identifier_preparer
+        selected = ", ".join(preparer.quote(column) for column in columns)
+    return sqlalchemy.text(
+        f"SELECT {selected} FROM {_qualified_name(conn, relation)}"  # noqa: S608 - identifiers are dialect-quoted.
+    )
 
-    Attributes:
-        postgres_resource: A Dagster resource dependency providing a PostgreSQL
-            connection.
-    """
+
+class _PandasHandler:
+    def load(
+        self,
+        conn: sqlalchemy.Connection,
+        relation: PostgresRelation,
+        columns: tuple[str, ...] | None,
+        spec: PostgresTableSpec,  # noqa: ARG002
+    ) -> pd.DataFrame:
+        return pd.read_sql(_select_sql(conn, relation, columns), conn)
+
+
+class _GeoPandasHandler:
+    def load(
+        self,
+        conn: sqlalchemy.Connection,
+        relation: PostgresRelation,
+        columns: tuple[str, ...] | None,
+        spec: PostgresTableSpec,
+    ) -> gpd.GeoDataFrame:
+        geometry_column = spec.geometry_column or "geometry"
+        if columns is not None and geometry_column not in columns:
+            msg = (
+                f"GeoDataFrame input columns must include geometry column "
+                f"{geometry_column!r}"
+            )
+            raise ValueError(msg)
+        return gpd.read_postgis(
+            _select_sql(conn, relation, columns),
+            conn,
+            geom_col=geometry_column,
+        )
+
+
+class PostgresIOManager(dg.ConfigurableIOManager):
+    """Persist pandas, GeoPandas, or server-native PostgreSQL relation assets."""
 
     postgres_resource: dg.ResourceDependency[PostgresResource]
 
-    def _prepare_for_write(
-        self, conn: sqlalchemy.Connection, table_name: str
-    ) -> Literal["fail", "append", "replace"]:
-        if self.if_exists != "cascade_replace":
-            return self.if_exists
+    @staticmethod
+    def _spec(metadata: Mapping[str, Any]) -> PostgresTableSpec:
+        return PostgresTableSpec.from_dagster_metadata(metadata)
 
-        inspector = sqlalchemy.inspect(conn)
-        if not inspector.has_table(table_name):
-            return "replace"
-
-        conn.execute(sqlalchemy.text(f"DROP TABLE {table_name} CASCADE;"))
-        return "replace"
-
-    def write_table(
-        self,
-        df: DFType,
-        table_name: str,
-        conn: sqlalchemy.Connection,
-    ) -> None:
-        """Write a DataFrame to a PostgreSQL table.
-
-        Must be implemented by subclasses.
-
-        Args:
-            df: The DataFrame to write.
-            table_name: The name of the destination table.
-            conn: An active SQLAlchemy database connection.
-
-        Raises:
-            NotImplementedError: Always, since this is an abstract method.
-        """
-        msg = "write_table must be implemented by subclasses"
-        raise NotImplementedError(msg)
-
-    def load_table(
-        self,
-        table_name: str,
-        cols_str: str,
-        conn: sqlalchemy.Connection,
-    ) -> DFType:
-        """Load data from a PostgreSQL table into a DataFrame.
-
-        Must be implemented by subclasses.
-
-        Args:
-            table_name: The name of the source table.
-            cols_str: A comma-separated string of column names to select, or ``"*"``
-                for all columns.
-            conn: An active SQLAlchemy database connection.
-
-        Returns:
-            The loaded DataFrame.
-
-        Raises:
-            NotImplementedError: Always, since this is an abstract method.
-        """
-        msg = "load_table must be implemented by subclasses"
-        raise NotImplementedError(msg)
+    @staticmethod
+    def _columns(metadata: Mapping[str, Any]) -> tuple[str, ...] | None:
+        value = metadata.get("columns")
+        if value is None:
+            return None
+        if (
+            not isinstance(value, Sequence)
+            or isinstance(value, str)
+            or not all(isinstance(column, str) and column for column in value)
+        ):
+            msg = "Input metadata 'columns' must be a sequence of non-empty strings"
+            raise ValueError(msg)
+        return tuple(value)
 
     def handle_output(
         self,
         context: dg.OutputContext,
-        obj: DFType,
+        obj: pd.DataFrame | PostgresRelation,
     ) -> None:
-        """Persist a DataFrame as a PostgreSQL table.
+        """Persist a frame or validate an already-published relation."""
+        spec = self._spec(context.definition_metadata)
+        if isinstance(obj, PostgresRelation):
+            self._handle_relation_output(spec, obj)
+            context.add_output_metadata(self._output_metadata(spec, None))
+            return
 
-        Writes the DataFrame to the table specified in
-        ``context.definition_metadata["table_name"]``. Optionally adds a primary key
-        constraint and foreign key constraints based on additional metadata keys.
+        if not isinstance(obj, pd.DataFrame):
+            msg = f"Unsupported PostgreSQL output type: {type(obj).__name__}"
+            raise TypeError(msg)
 
-        Args:
-            context: The Dagster output context. Relevant metadata keys:
-                - ``table_name`` (str, required): Target table name.
-                - ``primary_key`` (str, optional): Column to set as the primary key.
-                - ``foreign_keys`` (list[dict], optional): List of foreign key mappings,
-                  each with keys ``column``, ``ref_table``, and ``ref_column``.
-            obj: The DataFrame to write.
-
-        Raises:
-            ValueError: If the specified primary key or a foreign key column is not
-                present in the DataFrame's columns.
-        """
-        table = context.definition_metadata["table_name"]
-
-        with self.postgres_resource.begin() as conn:
-            self.write_table(obj, table, conn)
-
-            if "primary_key" in context.definition_metadata:
-                primary_key = context.definition_metadata["primary_key"]
-
-                if primary_key not in obj.columns:
-                    err = f"Primary key {primary_key} not found in DataFrame columns"
-                    raise ValueError(err)
-
-                conn.execute(
-                    sqlalchemy.text(
-                        f'ALTER TABLE {table} ADD PRIMARY KEY ("{primary_key}");',
-                    ),
+        if isinstance(obj, gpd.GeoDataFrame):
+            geometry_column = spec.geometry_column or "geometry"
+            if obj.geometry.name != geometry_column:
+                msg = (
+                    f"GeoDataFrame geometry column {obj.geometry.name!r} does not "
+                    f"match table specification {geometry_column!r}"
                 )
+                raise ValueError(msg)
 
-            if "foreign_keys" in context.definition_metadata:
-                foreign_keys = context.definition_metadata["foreign_keys"]
+        with (
+            self.postgres_resource.begin() as conn,
+            self.postgres_resource.stage_dataframe(
+                conn,
+                obj,
+                spec.relation,
+            ) as stage,
+        ):
+            self.postgres_resource.publish_relation(conn, stage, spec)
 
-                for fk_map in foreign_keys:
-                    fk_col = fk_map["column"]
-                    ref_table = fk_map["ref_table"]
-                    ref_col = fk_map["ref_column"]
+        context.add_output_metadata(self._output_metadata(spec, len(obj)))
 
-                    if fk_col not in obj.columns:
-                        err = (
-                            f"Foreign key column {fk_col} not found in DataFrame "
-                            "columns."
-                        )
-                        raise ValueError(err)
+    def _handle_relation_output(
+        self,
+        spec: PostgresTableSpec,
+        relation: PostgresRelation,
+    ) -> None:
+        if relation != spec.relation:
+            msg = (
+                f"Returned relation {relation.display_name} does not match declared "
+                f"relation {spec.relation.display_name}"
+            )
+            raise ValueError(msg)
+        with self.postgres_resource.connect() as conn:
+            if not self.postgres_resource.relation_exists(conn, relation):
+                msg = f"Published relation {relation.display_name} does not exist"
+                raise ValueError(msg)
 
-                    conn.execute(
-                        sqlalchemy.text(
-                            f"""
-                            ALTER TABLE {table}
-                            ADD FOREIGN KEY ("{fk_col}")
-                            REFERENCES {ref_table}("{ref_col}")
-                            """,
-                        ),
-                    )
-
-    def load_input(self, context: dg.InputContext) -> DFType:
-        """Load a DataFrame from the PostgreSQL table written by the upstream output.
-
-        Reads from the table specified in the upstream output's ``table_name`` metadata.
-        If the input metadata contains a ``columns`` key, only those columns are
-        selected.
-
-        Args:
-            context: The Dagster input context. Relevant metadata keys:
-                - ``columns`` (list[str], optional): Specific columns to load. Defaults
-                        to all columns.
-
-        Returns:
-            The loaded DataFrame.
-
-        Raises:
-            ValueError: If no upstream output is found.
-        """
+    def load_input(
+        self,
+        context: dg.InputContext,
+    ) -> pd.DataFrame | PostgresRelation:
+        """Return a zero-copy relation or load the requested frame type."""
         upstream_output = context.upstream_output
         if upstream_output is None:
-            err = "No upstream output found."
-            raise ValueError(err)
+            msg = "PostgreSQL inputs require an upstream output"
+            raise ValueError(msg)
 
-        table = upstream_output.definition_metadata["table_name"]
+        spec = self._spec(upstream_output.definition_metadata)
+        requested_type = context.dagster_type.typing_type
+        if requested_type is PostgresRelation:
+            return spec.relation
 
-        in_metadata = context.definition_metadata
-        if "columns" in in_metadata:
-            wanted_cols = in_metadata["columns"]
-            cols_str = ", ".join(wanted_cols)
-        else:
-            cols_str = "*"
-
+        handler = self._handler_for_type(requested_type)
+        columns = self._columns(context.definition_metadata)
         with self.postgres_resource.connect() as conn:
-            return self.load_table(table, cols_str, conn)
+            return handler.load(conn, spec.relation, columns, spec)
 
-
-class DataFramePostgresManager(_DataFrameBasePostgresManager[pd.DataFrame, Any]):
-    """Dagster IO manager for reading and writing pandas DataFrames to/from PostgreSQL.
-
-    Uses pandas ``to_sql`` and ``read_sql`` for serialization and deserialization.
-    Inherits output and input handling (including primary and foreign key constraints)
-    from ``_DataFrameBasePostgresManager``.
-
-    Args:
-        postgres_resource: A Dagster resource dependency providing a PostgreSQL
-            connection.
-    """
-
-    def write_table(
-        self,
-        df: pd.DataFrame,
-        table_name: str,
-        conn: sqlalchemy.Connection,
-    ) -> None:
-        """Write a pandas DataFrame to a PostgreSQL table using ``to_sql``.
-
-        Replaces the table if it already exists.
-
-        Args:
-            df: The pandas DataFrame to write.
-            table_name: The name of the destination table.
-            conn: An active SQLAlchemy database connection.
-        """
-        if_exists = self._prepare_for_write(conn, table_name)
-        df.to_sql(table_name, conn, if_exists=if_exists, index=False)
-
-    def load_table(
-        self,
-        table_name: str,
-        cols_str: str,
-        conn: sqlalchemy.Connection,
-    ) -> pd.DataFrame:
-        """Load a pandas DataFrame from a PostgreSQL table using ``read_sql``.
-
-        Args:
-            table_name: The name of the source table.
-            cols_str: A comma-separated string of column names to select, or ``"*"``
-                for all columns.
-            conn: An active SQLAlchemy database connection.
-
-        Returns:
-            The loaded DataFrame.
-        """
-        return pd.read_sql(f"SELECT {cols_str} FROM {table_name}", conn)  # noqa: S608
-
-
-class GeoDataFramePostGISManager(_DataFrameBasePostgresManager[gpd.GeoDataFrame, Any]):
-    """Dagster IO manager for reading and writing GeoDataFrames to/from PostGIS.
-
-    Uses geopandas ``to_postgis`` and ``read_postgis`` for serialization and
-    deserialization. Assumes a ``geometry`` column is present for spatial data.
-    Inherits output and input handling from ``_DataFrameBasePostgresManager``.
-
-    Args:
-        postgres_resource: A Dagster resource dependency providing a PostgreSQL
-            connection.
-    """
-
-    def write_table(
-        self,
-        df: gpd.GeoDataFrame,
-        table_name: str,
-        conn: sqlalchemy.Connection,
-    ) -> None:
-        """Write a GeoDataFrame to a PostGIS table using ``to_postgis``.
-
-        Replaces the table if it already exists.
-
-        Args:
-            df: The GeoDataFrame to write.
-            table_name: The name of the destination table.
-            conn: An active SQLAlchemy database connection.
-        """
-        if_exists = self._prepare_for_write(conn, table_name)
-        df.to_postgis(table_name, conn, if_exists=if_exists)
-
-    def load_table(
-        self,
-        table_name: str,
-        cols_str: str,
-        conn: sqlalchemy.Connection,
-    ) -> gpd.GeoDataFrame:
-        """Load a GeoDataFrame from a PostGIS table using ``read_postgis``.
-
-        Assumes the geometry column is named ``geometry``.
-
-        Args:
-            table_name: The name of the source table.
-            cols_str: A comma-separated string of column names to select, or ``"*"``
-                for all columns.
-            conn: An active SQLAlchemy database connection.
-
-        Returns:
-            The loaded GeoDataFrame.
-        """
-        return gpd.read_postgis(
-            f"SELECT {cols_str} FROM {table_name}",  # noqa: S608
-            conn,
-            geom_col="geometry",
+    @staticmethod
+    def _handler_for_type(requested_type: object) -> _FrameHandler:
+        if isinstance(requested_type, type) and issubclass(
+            requested_type,
+            gpd.GeoDataFrame,
+        ):
+            return _GeoPandasHandler()
+        if isinstance(requested_type, type) and issubclass(
+            requested_type,
+            pd.DataFrame,
+        ):
+            return _PandasHandler()
+        msg = (
+            "PostgresIOManager inputs must be annotated as PostgresRelation, "
+            "pandas.DataFrame, or geopandas.GeoDataFrame"
         )
+        raise TypeError(msg)
+
+    @staticmethod
+    def _output_metadata(
+        spec: PostgresTableSpec,
+        row_count: int | None,
+    ) -> dict[str, str | int]:
+        metadata: dict[str, str | int] = {
+            "schema": spec.relation.schema,
+            "table": spec.relation.name,
+            "relation": spec.relation.display_name,
+            "write_mode": spec.write_mode.value,
+        }
+        if row_count is not None:
+            metadata["row_count"] = row_count
+        if spec.geometry_column is not None:
+            metadata["geometry_column"] = spec.geometry_column
+        return metadata

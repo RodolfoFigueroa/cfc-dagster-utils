@@ -9,19 +9,20 @@ from cfc_dagster_utils._optional import raise_optional_dependency_error
 
 EXTRAS_ENV_VAR = "CFC_TEST_EXTRAS"
 DEPENDENCY_MODULES = {
-    "dagster": "dagster",
-    "dvc": "dvc",
-    "earthengine": "ee",
-    "xarray": "xarray",
+    "dagster": ("dagster",),
+    "dvc": ("dvc",),
+    "earthengine": ("ee",),
+    "postgres": ("geoalchemy2", "psycopg"),
+    "xarray": ("xarray",),
 }
 OPTIONAL_MODULES = {
     "cfc_dagster_utils.partitions": "dagster",
-    "cfc_dagster_utils.resources": "dagster",
+    "cfc_dagster_utils.resources": "postgres",
     "cfc_dagster_utils.managers.file": "dagster",
     "cfc_dagster_utils.managers.dataframe": "dagster",
     "cfc_dagster_utils.managers.geodataframe": "dagster",
     "cfc_dagster_utils.managers.json": "dagster",
-    "cfc_dagster_utils.managers.postgres": "dagster",
+    "cfc_dagster_utils.managers.postgres": "postgres",
     "cfc_dagster_utils.components.dvc": "dvc",
     "cfc_dagster_utils.managers.earthengine": "earthengine",
     "cfc_dagster_utils.managers.xarray": "xarray",
@@ -33,12 +34,12 @@ def _available_extras() -> set[str]:
     if requested is None:
         return {
             extra
-            for extra, module in DEPENDENCY_MODULES.items()
-            if importlib.util.find_spec(module) is not None
+            for extra, modules in DEPENDENCY_MODULES.items()
+            if all(importlib.util.find_spec(module) is not None for module in modules)
         }
 
     available = set(filter(None, requested.split(",")))
-    if available & {"dvc", "earthengine", "xarray"}:
+    if available & {"dvc", "earthengine", "postgres", "xarray"}:
         available.add("dagster")
     return available
 
@@ -66,8 +67,11 @@ def test_matrix_environment_contains_only_expected_optional_dependencies() -> No
         pytest.skip("Exact dependency assertions only apply to isolated matrix runs")
 
     available = _available_extras()
-    for extra, module in DEPENDENCY_MODULES.items():
-        assert (importlib.util.find_spec(module) is not None) is (extra in available)
+    for extra, modules in DEPENDENCY_MODULES.items():
+        for module in modules:
+            assert (importlib.util.find_spec(module) is not None) is (
+                extra in available
+            )
 
 
 @pytest.mark.parametrize(("module", "extra"), OPTIONAL_MODULES.items())
