@@ -1,18 +1,37 @@
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, overload
 
+import geopandas as gpd
 import pandas as pd
 
-from cfc_dagster_utils.types import BoundDFType
 
-
+@overload
 def cast_all_columns_to_numeric(
-    df: BoundDFType,
+    df: gpd.GeoDataFrame,
     ignore: Sequence[str] | None = None,
     *,
     errors: Literal["coerce", "raise"] = "raise",
     make_valid_int: bool = False,
-) -> BoundDFType:
+) -> gpd.GeoDataFrame: ...
+
+
+@overload
+def cast_all_columns_to_numeric(
+    df: pd.DataFrame,
+    ignore: Sequence[str] | None = None,
+    *,
+    errors: Literal["coerce", "raise"] = "raise",
+    make_valid_int: bool = False,
+) -> pd.DataFrame: ...
+
+
+def cast_all_columns_to_numeric(
+    df: pd.DataFrame,
+    ignore: Sequence[str] | None = None,
+    *,
+    errors: Literal["coerce", "raise"] = "raise",
+    make_valid_int: bool = False,
+) -> pd.DataFrame:
     """Convert all columns in a DataFrame to numeric types.
 
     Attempts to cast all columns in a DataFrame to numeric types, with options
