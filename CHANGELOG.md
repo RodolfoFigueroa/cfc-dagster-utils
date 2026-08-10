@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.1 (2026-08-10)
+
+### Bug Fixes
+
+- Fix wrong typing in util func.
+  ([`aa5471c`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/aa5471c8b64b3f6dbda51dee777562849e7a2fce))
+
+
 ## v1.2.0 (2026-08-10)
 
 ### Features
