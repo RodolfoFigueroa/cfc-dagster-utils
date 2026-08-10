@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-08-10)
+
+### Features
+
+- Refactor Postgres/PostGIS functionality
+  ([`5a039d9`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/5a039d96cb6f999c9021b5b45fbe7e1d0cf1c03f))
+
+
 ## v1.1.1 (2026-08-06)
 
 ### Bug Fixes
