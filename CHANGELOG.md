@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.2 (2026-08-11)
+
+### Bug Fixes
+
+- Make spatial indices implicit
+  ([`65f0191`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/65f019123838c58c6cf1f2633a62004ad1cd8749))
+
+
 ## v1.2.1 (2026-08-10)
 
 ### Bug Fixes
