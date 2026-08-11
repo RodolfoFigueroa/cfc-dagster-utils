@@ -78,8 +78,7 @@ def _spec(
         ),
         indexes=(
             PostgresIndex(
-                columns=("geometry",),
-                method=PostgresIndexMethod.GIST,
+                columns=("parent_id",),
             ),
         ),
         geometry_column="geometry",
@@ -105,6 +104,20 @@ def test_table_spec_validates_composite_foreign_key() -> None:
 def test_table_spec_requires_dagster_metadata() -> None:
     with pytest.raises(TypeError, match="to_dagster_metadata"):
         PostgresTableSpec.from_dagster_metadata({})
+
+
+def test_table_spec_rejects_explicit_managed_geometry_index() -> None:
+    with pytest.raises(ValueError, match="managed automatically"):
+        PostgresTableSpec(
+            relation=PostgresRelation(name="spatial"),
+            indexes=(
+                PostgresIndex(
+                    columns=("geom",),
+                    method=PostgresIndexMethod.GIST,
+                ),
+            ),
+            geometry_column="geom",
+        )
 
 
 def test_resource_builds_psycopg_url_and_disposes_engine() -> None:
@@ -138,10 +151,19 @@ def test_stage_dataframe_uses_geodataframe_handler_before_pandas() -> None:
         crs="EPSG:4326",
     )
     target = PostgresRelation(name="a" * 100, schema="analytics")
+    inspector = MagicMock()
+    inspector.get_indexes.return_value = [
+        {
+            "name": "idx_stage_geometry",
+            "column_names": ["geometry"],
+            "dialect_options": {"postgresql_using": "gist"},
+        }
+    ]
 
     with (
         patch.object(gpd.GeoDataFrame, "to_postgis") as to_postgis,
         patch.object(pd.DataFrame, "to_sql") as to_sql,
+        patch("sqlalchemy.inspect", return_value=inspector),
         patch.object(PostgresResource, "relation_exists", return_value=False),
         resource.stage_dataframe(conn, frame, target) as stage,
     ):
@@ -150,6 +172,7 @@ def test_stage_dataframe_uses_geodataframe_handler_before_pandas() -> None:
 
     to_postgis.assert_called_once()
     to_sql.assert_not_called()
+    assert _statement_strings(conn) == ["DROP INDEX analytics.idx_stage_geometry"]
 
 
 def test_stage_dataframe_cleans_up_unpublished_table() -> None:
@@ -205,6 +228,7 @@ def test_publish_create_quotes_identifiers_and_applies_contract() -> None:
     source = PostgresRelation(name="stage table", schema="analytics")
     inspector = MagicMock()
     inspector.has_table.side_effect = [True, False]
+    inspector.get_indexes.return_value = []
 
     with patch("sqlalchemy.inspect", return_value=inspector):
         resource.publish_relation(conn, source, _spec())
@@ -214,6 +238,42 @@ def test_publish_create_quotes_identifiers_and_applies_contract() -> None:
     assert "ADD PRIMARY KEY (state, id)" in statements[1]
     assert "REFERENCES reference.parent (state, id)" in statements[2]
     assert "USING gist (geometry)" in statements[3]
+    assert "USING btree (parent_id)" in statements[4]
+
+
+def test_ensure_geometry_index_preserves_matching_existing_index() -> None:
+    resource = _resource()
+    conn = _connection()
+    inspector = MagicMock()
+    inspector.get_indexes.return_value = [
+        {
+            "name": "existing_spatial_index",
+            "column_names": ["geometry"],
+            "dialect_options": {"postgresql_using": "gist"},
+        }
+    ]
+
+    with patch("sqlalchemy.inspect", return_value=inspector):
+        resource.ensure_geometry_index(conn, _spec())
+
+    conn.execute.assert_not_called()
+
+
+def test_ensure_geometry_index_creates_deterministic_index_when_missing() -> None:
+    resource = _resource()
+    conn = _connection()
+    inspector = MagicMock()
+    inspector.get_indexes.return_value = []
+
+    with patch("sqlalchemy.inspect", return_value=inspector):
+        resource.ensure_geometry_index(conn, _spec())
+
+    assert _statement_strings(conn) == [
+        (
+            "CREATE INDEX target_geometry_gist_idx "
+            "ON analytics.target USING gist (geometry)"
+        )
+    ]
 
 
 def test_publish_replace_drops_without_cascade() -> None:
@@ -257,12 +317,14 @@ def test_publish_into_existing_table(
     inspector = MagicMock()
     inspector.has_table.side_effect = [True, True]
     inspector.get_columns.side_effect = [
-        [{"name": "id"}, {"name": "select"}],
-        [{"name": "select"}, {"name": "id"}],
+        [{"name": "id"}, {"name": "select"}, {"name": "geometry"}],
+        [{"name": "select"}, {"name": "geometry"}, {"name": "id"}],
     ]
+    inspector.get_indexes.return_value = []
     spec = PostgresTableSpec(
         relation=PostgresRelation(name="target", schema="analytics"),
         write_mode=write_mode,
+        geometry_column="geometry",
     )
 
     with patch("sqlalchemy.inspect", return_value=inspector):
@@ -272,9 +334,13 @@ def test_publish_into_existing_table(
     assert any(statement.startswith("TRUNCATE TABLE") for statement in statements) is (
         expects_truncate
     )
+    assert statements[-2] == (
+        'INSERT INTO analytics.target ("select", geometry, id) '
+        'SELECT "select", geometry, id FROM analytics.stage'
+    )
     assert statements[-1] == (
-        'INSERT INTO analytics.target ("select", id) '
-        'SELECT "select", id FROM analytics.stage'
+        "CREATE INDEX target_geometry_gist_idx "
+        "ON analytics.target USING gist (geometry)"
     )
 
 
@@ -392,14 +458,17 @@ def test_manager_validates_already_published_relation() -> None:
     spec = _spec()
     context = dg.build_output_context(definition_metadata=spec.to_dagster_metadata())
     conn = _connection()
-    connect = MagicMock(spec=AbstractContextManager)
-    connect.__enter__.return_value = conn
+    begin = MagicMock(spec=AbstractContextManager)
+    begin.__enter__.return_value = conn
 
     with (
-        patch.object(PostgresResource, "connect", return_value=connect),
+        patch.object(PostgresResource, "begin", return_value=begin),
         patch.object(PostgresResource, "relation_exists", return_value=True),
+        patch.object(PostgresResource, "ensure_geometry_index") as ensure_index,
     ):
         manager.handle_output(context, spec.relation)
+
+    ensure_index.assert_called_once_with(conn, spec)
 
 
 def test_manager_rejects_mismatched_relation_output() -> None:
@@ -436,3 +505,55 @@ def test_manager_stages_and_publishes_frame() -> None:
 
     stage_dataframe.assert_called_once_with(conn, frame, spec.relation)
     publish_relation.assert_called_once_with(conn, stage, spec)
+
+
+def test_manager_infers_conventional_geometry_and_publishes_managed_spec() -> None:
+    resource = _resource()
+    manager = PostgresIOManager(postgres_resource=resource)
+    spec = PostgresTableSpec(
+        relation=PostgresRelation(name="target", schema="analytics"),
+    )
+    context = dg.build_output_context(definition_metadata=spec.to_dagster_metadata())
+    frame = gpd.GeoDataFrame(
+        {"id": [1]},
+        geometry=[Point(0, 0)],
+        crs="EPSG:4326",
+    )
+    conn = _connection()
+    stage = PostgresRelation(name="stage", schema="analytics")
+    begin = MagicMock(spec=AbstractContextManager)
+    begin.__enter__.return_value = conn
+    staging = MagicMock(spec=AbstractContextManager)
+    staging.__enter__.return_value = stage
+
+    with (
+        patch.object(PostgresResource, "begin", return_value=begin),
+        patch.object(PostgresResource, "stage_dataframe", return_value=staging),
+        patch.object(PostgresResource, "publish_relation") as publish_relation,
+    ):
+        manager.handle_output(context, frame)
+
+    published_spec = publish_relation.call_args.args[2]
+    assert published_spec.geometry_column == "geometry"
+
+
+def test_manager_rejects_inferred_duplicate_geometry_index() -> None:
+    manager = PostgresIOManager(postgres_resource=_resource())
+    spec = PostgresTableSpec(
+        relation=PostgresRelation(name="target"),
+        indexes=(
+            PostgresIndex(
+                columns=("geometry",),
+                method=PostgresIndexMethod.GIST,
+            ),
+        ),
+    )
+    context = dg.build_output_context(definition_metadata=spec.to_dagster_metadata())
+    frame = gpd.GeoDataFrame(
+        {"id": [1]},
+        geometry=[Point(0, 0)],
+        crs="EPSG:4326",
+    )
+
+    with pytest.raises(ValueError, match="managed automatically"):
+        manager.handle_output(context, frame)

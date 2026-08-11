@@ -75,8 +75,6 @@ import dagster as dg
 from cfc_dagster_utils.managers.postgres import PostgresIOManager
 from cfc_dagster_utils.resources import PostgresResource
 from cfc_dagster_utils.types import (
-    PostgresIndex,
-    PostgresIndexMethod,
     PostgresRelation,
     PostgresTableSpec,
     PostgresWriteMode,
@@ -86,12 +84,6 @@ CITIES = PostgresTableSpec(
     relation=PostgresRelation(schema="public", name="cities"),
     write_mode=PostgresWriteMode.REPLACE,
     primary_key=("city_id",),
-    indexes=(
-        PostgresIndex(
-            columns=("geometry",),
-            method=PostgresIndexMethod.GIST,
-        ),
-    ),
     geometry_column="geometry",
 )
 
@@ -122,6 +114,10 @@ defs = dg.Definitions(
     },
 )
 ```
+
+Declaring `geometry_column` makes the relation spatial. The IO manager maintains a
+single-column GiST index for it automatically; `indexes` is reserved for additional
+indexes and must not repeat the managed geometry index.
 
 Downstream assets can request `PostgresRelation` to receive a zero-copy table handle
 instead of loading the table into memory:

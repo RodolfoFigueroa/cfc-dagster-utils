@@ -1,5 +1,5 @@
 import hashlib
-from collections.abc import Generator, Iterator, Sequence
+from collections.abc import Generator, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from uuid import uuid4
 
@@ -11,6 +11,7 @@ from sqlalchemy.schema import DropTable
 from cfc_dagster_utils._optional import raise_optional_dependency_error
 from cfc_dagster_utils.types import (
     PostgresIndex,
+    PostgresIndexMethod,
     PostgresRelation,
     PostgresTableSpec,
     PostgresWriteMode,
@@ -146,6 +147,10 @@ class PostgresResource(dg.ConfigurableResource):
             name=f"_cfc_stage_{uuid4().hex}",
         )
         if isinstance(frame, gpd.GeoDataFrame):
+            geometry_column = frame.geometry.name
+            if not isinstance(geometry_column, str):
+                msg = "GeoDataFrame geometry column names must be strings"
+                raise TypeError(msg)
             frame.to_postgis(
                 stage.name,
                 conn,
@@ -153,6 +158,7 @@ class PostgresResource(dg.ConfigurableResource):
                 if_exists="fail",
                 index=False,
             )
+            self._drop_geometry_indexes(conn, stage, geometry_column)
         elif isinstance(frame, pd.DataFrame):
             frame.to_sql(
                 stage.name,
@@ -229,6 +235,7 @@ class PostgresResource(dg.ConfigurableResource):
                 f"FROM {self._qualified_name(conn, source)}",
             ),
         )
+        self.ensure_geometry_index(conn, spec)
 
     def _rename_relation(
         self,
@@ -298,8 +305,65 @@ class PostgresResource(dg.ConfigurableResource):
                 ),
             )
 
+        self.ensure_geometry_index(conn, spec)
+
         for index in spec.indexes:
             self._create_index(conn, spec.relation, index)
+
+    def ensure_geometry_index(
+        self,
+        conn: sqlalchemy.Connection,
+        spec: PostgresTableSpec,
+    ) -> None:
+        """Ensure a spatial table has exactly one managed geometry GiST index."""
+        if spec.geometry_column is None:
+            return
+        if self._geometry_indexes(conn, spec.relation, spec.geometry_column):
+            return
+        self._create_index(
+            conn,
+            spec.relation,
+            PostgresIndex(
+                columns=(spec.geometry_column,),
+                method=PostgresIndexMethod.GIST,
+            ),
+        )
+
+    def _drop_geometry_indexes(
+        self,
+        conn: sqlalchemy.Connection,
+        relation: PostgresRelation,
+        geometry_column: str,
+    ) -> None:
+        preparer = conn.dialect.identifier_preparer
+        for index_name in self._geometry_indexes(conn, relation, geometry_column):
+            qualified_index = (
+                f"{preparer.quote_schema(relation.schema)}.{preparer.quote(index_name)}"
+            )
+            conn.execute(
+                sqlalchemy.text(
+                    f"DROP INDEX {qualified_index}",
+                ),
+            )
+
+    @staticmethod
+    def _geometry_indexes(
+        conn: sqlalchemy.Connection,
+        relation: PostgresRelation,
+        geometry_column: str,
+    ) -> tuple[str, ...]:
+        indexes = sqlalchemy.inspect(conn).get_indexes(
+            relation.name,
+            schema=relation.schema,
+        )
+        return tuple(
+            index_name
+            for index in indexes
+            if index.get("column_names") == [geometry_column]
+            and isinstance(index.get("dialect_options"), Mapping)
+            and index["dialect_options"].get("postgresql_using") == "gist"
+            and isinstance(index_name := index.get("name"), str)
+        )
 
     def _create_index(
         self,

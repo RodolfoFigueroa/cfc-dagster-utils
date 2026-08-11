@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any, Protocol
 
 import geopandas as gpd
@@ -133,6 +134,7 @@ class PostgresIOManager(dg.ConfigurableIOManager):
                     f"match table specification {geometry_column!r}"
                 )
                 raise ValueError(msg)
+            spec = replace(spec, geometry_column=geometry_column)
 
         with (
             self.postgres_resource.begin() as conn,
@@ -157,10 +159,11 @@ class PostgresIOManager(dg.ConfigurableIOManager):
                 f"relation {spec.relation.display_name}"
             )
             raise ValueError(msg)
-        with self.postgres_resource.connect() as conn:
+        with self.postgres_resource.begin() as conn:
             if not self.postgres_resource.relation_exists(conn, relation):
                 msg = f"Published relation {relation.display_name} does not exist"
                 raise ValueError(msg)
+            self.postgres_resource.ensure_geometry_index(conn, spec)
 
     def load_input(
         self,

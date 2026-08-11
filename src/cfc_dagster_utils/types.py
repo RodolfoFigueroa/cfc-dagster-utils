@@ -213,6 +213,16 @@ class PostgresTableSpec:
         if self.geometry_column == "":
             msg = "geometry_column must be non-empty when provided"
             raise ValueError(msg)
+        if self.geometry_column is not None and any(
+            index.method is PostgresIndexMethod.GIST
+            and index.columns == (self.geometry_column,)
+            for index in self.indexes
+        ):
+            msg = (
+                "The GiST index for geometry_column is managed automatically and "
+                "must not be declared in indexes"
+            )
+            raise ValueError(msg)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the table contract to plain metadata values."""
