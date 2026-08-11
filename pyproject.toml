@@ -11,9 +11,10 @@ earthengine = ["dagster>=1", "earthengine-api>=1"]
 xarray = ["dagster>=1", "xarray>=2026.4.0"]
 dvc = ["dagster>=1.12", "dvc>=3", "pyyaml>=6"]
 postgres = [
-    "dagster>=1",
+    "dagster>=1.13",
     "geoalchemy2>=0.18",
     "psycopg[binary]>=3.2",
+    "sqlparse>=0.5",
 ]
 
 [build-system]

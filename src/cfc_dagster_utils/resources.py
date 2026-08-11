@@ -130,6 +130,15 @@ class PostgresResource(dg.ConfigurableResource):
         preparer = conn.dialect.identifier_preparer
         return ", ".join(preparer.quote(column) for column in columns)
 
+    @staticmethod
+    def ensure_schema(
+        conn: sqlalchemy.Connection,
+        schema: str,
+    ) -> None:
+        """Create ``schema`` when it does not already exist."""
+        quoted_schema = conn.dialect.identifier_preparer.quote_schema(schema)
+        conn.execute(sqlalchemy.text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
+
     @contextmanager
     def stage_dataframe(
         self,
@@ -146,6 +155,7 @@ class PostgresResource(dg.ConfigurableResource):
             schema=target.schema,
             name=f"_cfc_stage_{uuid4().hex}",
         )
+        self.ensure_schema(conn, stage.schema)
         if isinstance(frame, gpd.GeoDataFrame):
             geometry_column = frame.geometry.name
             if not isinstance(geometry_column, str):
@@ -180,6 +190,52 @@ class PostgresResource(dg.ConfigurableResource):
             # cleanup SQL against a potentially aborted transaction.
             if completed and self.relation_exists(conn, stage):
                 conn.execute(DropTable(self._table(stage), if_exists=True))
+
+    @contextmanager
+    def stage_query(
+        self,
+        conn: sqlalchemy.Connection,
+        query: str,
+        target: PostgresRelation,
+    ) -> Iterator[PostgresRelation]:
+        """Stage a row-producing query in a run-unique regular table."""
+        query = query.strip()
+        if not query:
+            msg = "A staged PostgreSQL query must not be empty"
+            raise ValueError(msg)
+
+        stage = PostgresRelation(
+            schema=target.schema,
+            name=f"_cfc_stage_{uuid4().hex}",
+        )
+        self.ensure_schema(conn, stage.schema)
+        conn.execute(
+            sqlalchemy.text(
+                f"CREATE TABLE {self._qualified_name(conn, stage)} AS {query}",
+            ),
+        )
+
+        completed = False
+        try:
+            yield stage
+            completed = True
+        finally:
+            # Match DataFrame staging: rollback owns cleanup after an error, while a
+            # successful unpublished stage is removed explicitly.
+            if completed and self.relation_exists(conn, stage):
+                conn.execute(DropTable(self._table(stage), if_exists=True))
+
+    def materialize_query(
+        self,
+        query: str,
+        table_spec: PostgresTableSpec,
+    ) -> None:
+        """Stage and publish a query result in one database transaction."""
+        with (
+            self.begin() as conn,
+            self.stage_query(conn, query, table_spec.relation) as stage,
+        ):
+            self.publish_relation(conn, stage, table_spec)
 
     def publish_relation(
         self,

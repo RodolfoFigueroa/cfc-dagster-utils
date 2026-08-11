@@ -25,6 +25,7 @@ from cfc_dagster_utils.types import (
 
 TEST_PASSWORD = "secret"  # noqa: S105 - inert test credential.
 SPECIAL_TEST_PASSWORD = "p@ss/w:rd"  # noqa: S105 - URL-encoding fixture.
+STAGING_STATEMENT_COUNT = 2
 
 
 def _resource() -> PostgresResource:
@@ -172,7 +173,10 @@ def test_stage_dataframe_uses_geodataframe_handler_before_pandas() -> None:
 
     to_postgis.assert_called_once()
     to_sql.assert_not_called()
-    assert _statement_strings(conn) == ["DROP INDEX analytics.idx_stage_geometry"]
+    assert _statement_strings(conn) == [
+        "CREATE SCHEMA IF NOT EXISTS analytics",
+        "DROP INDEX analytics.idx_stage_geometry",
+    ]
 
 
 def test_stage_dataframe_cleans_up_unpublished_table() -> None:
@@ -193,8 +197,9 @@ def test_stage_dataframe_cleans_up_unpublished_table() -> None:
 
     to_sql.assert_called_once()
     statements = _statement_strings(conn)
-    assert len(statements) == 1
-    assert statements[0].startswith("DROP TABLE IF EXISTS public._cfc_stage_")
+    assert len(statements) == STAGING_STATEMENT_COUNT
+    assert statements[0] == "CREATE SCHEMA IF NOT EXISTS public"
+    assert statements[1].startswith("DROP TABLE IF EXISTS public._cfc_stage_")
 
 
 def test_stage_dataframe_does_not_mask_transaction_failure() -> None:
@@ -219,7 +224,75 @@ def test_stage_dataframe_does_not_mask_transaction_failure() -> None:
         fail_server_side_transformation()
 
     relation_exists.assert_not_called()
+    assert _statement_strings(conn) == ["CREATE SCHEMA IF NOT EXISTS public"]
+
+
+def test_stage_query_creates_schema_table_and_cleans_up() -> None:
+    resource = _resource()
+    conn = _connection()
+
+    with (
+        patch.object(PostgresResource, "relation_exists", return_value=True),
+        resource.stage_query(
+            conn,
+            "SELECT id FROM source",
+            PostgresRelation(name="target", schema="analytics"),
+        ) as stage,
+    ):
+        assert stage.schema == "analytics"
+
+    statements = _statement_strings(conn)
+    assert statements[0] == "CREATE SCHEMA IF NOT EXISTS analytics"
+    assert statements[1].startswith(
+        "CREATE TABLE analytics._cfc_stage_",
+    )
+    assert statements[1].endswith(" AS SELECT id FROM source")
+    assert statements[2].startswith(
+        "DROP TABLE IF EXISTS analytics._cfc_stage_",
+    )
+
+
+def test_stage_query_rejects_empty_query_without_creating_schema() -> None:
+    resource = _resource()
+    conn = _connection()
+
+    with (
+        pytest.raises(ValueError, match="must not be empty"),
+        resource.stage_query(
+            conn,
+            "  \n ",
+            PostgresRelation(name="target"),
+        ),
+    ):
+        pass
+
     conn.execute.assert_not_called()
+
+
+def test_materialize_query_uses_one_transaction_and_propagates_failure() -> None:
+    resource = _resource()
+    conn = _connection()
+    stage = PostgresRelation(name="stage", schema="analytics")
+    begin = MagicMock(spec=AbstractContextManager)
+    begin.__enter__.return_value = conn
+    staging = MagicMock(spec=AbstractContextManager)
+    staging.__enter__.return_value = stage
+    spec = _spec(write_mode=PostgresWriteMode.REPLACE)
+
+    with (
+        patch.object(PostgresResource, "begin", return_value=begin),
+        patch.object(PostgresResource, "stage_query", return_value=staging),
+        patch.object(
+            PostgresResource,
+            "publish_relation",
+            side_effect=RuntimeError("publication failed"),
+        ) as publish,
+        pytest.raises(RuntimeError, match="publication failed"),
+    ):
+        resource.materialize_query("SELECT 1", spec)
+
+    publish.assert_called_once_with(conn, stage, spec)
+    assert begin.__exit__.call_args.args[0] is RuntimeError
 
 
 def test_publish_create_quotes_identifiers_and_applies_contract() -> None:
