@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.3.0 (2026-08-11)
+
+### Features
+
+- Use Dagster's preview Postgres component
+  ([`b645709`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/b645709efcfc7f4d6b179ea34facd4e02599b447))
+
+
 ## v1.2.2 (2026-08-11)
 
 ### Bug Fixes
