@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.3.1 (2026-08-14)
+
+### Bug Fixes
+
+- Remove hardcoded group name
+  ([`2ad8128`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/2ad81284dec8affebb115ff833656ce2e3775a19))
+
+
 ## v1.3.0 (2026-08-11)
 
 ### Features
