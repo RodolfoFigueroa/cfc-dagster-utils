@@ -162,7 +162,6 @@ class DvcInputComponent(dg.Component, dg.Resolvable, dg.Model):
         descriptor = repository_root / self.dvc_file
         spec = dg.AssetSpec(
             key=self.key,
-            group_name="raw_inputs",
             kinds={"dvc"},
         )
 
