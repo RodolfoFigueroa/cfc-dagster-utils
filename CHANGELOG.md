@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.3.2 (2026-08-20)
+
+### Bug Fixes
+
+- Add args for choosing dtypes
+  ([`30ff96d`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/30ff96d88db0832a054e62fafa4cfa1f2a543e6b))
+
+- Fix args
+  ([`c4614b9`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/c4614b96594e3b880f48938fdfd2dccdee53624b))
+
+### Chores
+
+- Update pre-commit config
+  ([`99dc936`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/99dc936065c92e02959d072ce60c29ba69c89b99))
+
+
 ## v1.3.1 (2026-08-14)
 
 ### Bug Fixes
