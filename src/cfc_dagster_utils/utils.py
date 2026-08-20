@@ -82,7 +82,7 @@ def cast_all_columns_to_numeric(  # noqa: PLR0913
     for col in df.columns:
         if col not in ignore:
             new_col = pd.to_numeric(df[col], errors=errors)
-            if make_valid_int and (new_col.to_numpy() % 1 == 0).all():
+            if make_valid_int and new_col.mod(1).eq(0, fill_value=0).all():
                 new_col = new_col.astype(int_type)
 
             if pd.api.types.is_float_dtype(new_col):
