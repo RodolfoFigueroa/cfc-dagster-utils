@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.3.4 (2026-08-20)
+
+### Bug Fixes
+
+- Allow nullable int cols
+  ([`c42a9c3`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/c42a9c3ac99d0a7f9eef786584b8e3e4bce62da2))
+
+
 ## v1.3.3 (2026-08-20)
 
 ### Bug Fixes
