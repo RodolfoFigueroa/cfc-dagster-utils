@@ -91,6 +91,8 @@ def cast_all_columns_to_numeric(  # noqa: PLR0913
 
             if pd.api.types.is_float_dtype(new_col):
                 new_col = new_col.astype(float_type)
+            elif pd.api.types.is_integer_dtype(new_col):
+                new_col = new_col.astype(int_type)
 
             df[col] = new_col
 
