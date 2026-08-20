@@ -307,7 +307,7 @@ wheels = [
 
 [[package]]
 name = "cfc-dagster-utils"
-version = "1.3.4"
+version = "1.3.5"
 source = { editable = "." }
 dependencies = [
     { name = "geopandas" },

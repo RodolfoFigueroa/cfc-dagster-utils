@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.3.5 (2026-08-20)
+
+### Bug Fixes
+
+- Fix null whole check
+  ([`debe1f2`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/debe1f2637d515d38e6e3f04931ad806146b267d))
+
+
 ## v1.3.4 (2026-08-20)
 
 ### Bug Fixes
