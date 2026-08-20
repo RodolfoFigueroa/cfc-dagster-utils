@@ -12,6 +12,8 @@ def cast_all_columns_to_numeric(
     *,
     errors: Literal["coerce", "raise"] = "raise",
     make_valid_int: bool = False,
+    int_type: str = "int",
+    float_type: str = "float",
 ) -> gpd.GeoDataFrame: ...
 
 
@@ -22,10 +24,12 @@ def cast_all_columns_to_numeric(
     *,
     errors: Literal["coerce", "raise"] = "raise",
     make_valid_int: bool = False,
+    int_type: str = "int",
+    float_type: str = "float",
 ) -> pd.DataFrame: ...
 
 
-def cast_all_columns_to_numeric(
+def cast_all_columns_to_numeric(  # noqa: PLR0913
     df: pd.DataFrame,
     ignore: Sequence[str] | None = None,
     *,
