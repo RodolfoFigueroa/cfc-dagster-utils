@@ -31,6 +31,8 @@ def cast_all_columns_to_numeric(
     *,
     errors: Literal["coerce", "raise"] = "raise",
     make_valid_int: bool = False,
+    int_type: str = "int",
+    float_type: str = "float",
 ) -> pd.DataFrame:
     """Convert all columns in a DataFrame to numeric types.
 
@@ -81,7 +83,11 @@ def cast_all_columns_to_numeric(
                 and new_col.notna().all()
                 and (new_col.to_numpy() % 1 == 0).all()
             ):
-                new_col = new_col.astype(int)
+                new_col = new_col.astype(int_type)
+
+            if pd.api.types.is_float_dtype(new_col):
+                new_col = new_col.astype(float_type)
+
             df[col] = new_col
 
     return df
