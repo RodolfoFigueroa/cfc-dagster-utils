@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.3.3 (2026-08-20)
+
+### Bug Fixes
+
+- Fix missing cast check
+  ([`7f0ec61`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/7f0ec615506b66ca9d2d8041b76dc667a727e466))
+
+
 ## v1.3.2 (2026-08-20)
 
 ### Bug Fixes
