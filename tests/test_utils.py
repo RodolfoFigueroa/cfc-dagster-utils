@@ -23,6 +23,7 @@ def _typecheck_cast_all_columns_to_numeric(
             ignore=["identifier"],
             errors="coerce",
             prefer_integer=True,
+            integer_dtype="Int32",
         ),
         pd.DataFrame,
     )
@@ -51,7 +52,7 @@ def test_cast_all_columns_to_numeric_returns_converted_copy() -> None:
     expected = pd.DataFrame(
         {
             "identifier": ["001", "002"],
-            "integer": pd.Series([1, 2], dtype="Int64"),
+            "integer": pd.Series([1, 2], dtype="Int32"),
             "decimal": pd.Series([1.5, 2.5], dtype="Float64"),
         },
     )
@@ -65,7 +66,7 @@ def test_cast_all_columns_to_numeric_coerces_invalid_values() -> None:
 
     result = dataframe.pipe(cast_all_columns_to_numeric, errors="coerce")
 
-    expected = pd.DataFrame({"value": pd.Series([1, None], dtype="Int64")})
+    expected = pd.DataFrame({"value": pd.Series([1, None], dtype="Int32")})
     pd.testing.assert_frame_equal(result, expected)
 
 
@@ -92,7 +93,7 @@ def test_cast_all_columns_to_numeric_preserves_geodataframe() -> None:
     assert isinstance(result, gpd.GeoDataFrame)
     assert result.crs == geodataframe.crs
     pd.testing.assert_series_equal(
-        result["value"], pd.Series([1, 2], name="value", dtype="Int64")
+        result["value"], pd.Series([1, 2], name="value", dtype="Int32")
     )
     gpd_testing.assert_geoseries_equal(result.geometry, geodataframe.geometry)
 
@@ -113,7 +114,9 @@ def test_integer_precision_and_missing_values(
     dataframe = pd.DataFrame({"value": pd.Series(values, dtype=dtype)})
     expected = pd.Series(values, name="value", dtype="Int64")
 
-    result = cast_all_columns_to_numeric(dataframe, prefer_integer=prefer_integer)
+    result = cast_all_columns_to_numeric(
+        dataframe, prefer_integer=prefer_integer, integer_dtype="Int64"
+    )
 
     pd.testing.assert_series_equal(result["value"], expected)
 
@@ -125,7 +128,7 @@ def test_integer_overflow(value: int, errors: Literal["raise", "coerce"]) -> Non
     original = dataframe.copy()
 
     with pytest.raises(OverflowError, match=r"Column 'count'.*Int64"):
-        cast_all_columns_to_numeric(dataframe, errors=errors)
+        cast_all_columns_to_numeric(dataframe, errors=errors, integer_dtype="Int64")
 
     pd.testing.assert_frame_equal(dataframe, original)
 
@@ -162,7 +165,9 @@ def test_float_integer_inference(
         dtype="Int64" if integer_output else "Float64",
     )
 
-    result = cast_all_columns_to_numeric(dataframe, prefer_integer=prefer_integer)
+    result = cast_all_columns_to_numeric(
+        dataframe, prefer_integer=prefer_integer, integer_dtype="Int64"
+    )
 
     pd.testing.assert_series_equal(result["value"], expected)
 
@@ -174,17 +179,19 @@ def test_float_strings(*, prefer_integer: bool) -> None:
     result = cast_all_columns_to_numeric(dataframe, prefer_integer=prefer_integer)
 
     expected = pd.Series(
-        [1, None], name="value", dtype="Int64" if prefer_integer else "Float64"
+        [1, None], name="value", dtype="Int32" if prefer_integer else "Float64"
     )
     pd.testing.assert_series_equal(result["value"], expected)
 
 
+@pytest.mark.parametrize("integer_dtype", ["Int32", "Int64"])
 @pytest.mark.parametrize("values", [[], [None, None]])
 @pytest.mark.parametrize(
     ("dtype", "expected_dtype"),
     [
-        ("Int32", "Int64"),
-        ("UInt64", "Int64"),
+        ("Int32", "Int32"),
+        ("Int64", "Int32"),
+        ("UInt64", "Int32"),
         ("Float32", "Float64"),
         ("float64", "Float64"),
         ("object", "Float64"),
@@ -192,13 +199,20 @@ def test_float_strings(*, prefer_integer: bool) -> None:
     ],
 )
 def test_empty_and_all_missing_columns(
-    values: list[None], dtype: str, expected_dtype: str
+    values: list[None],
+    dtype: str,
+    expected_dtype: str,
+    integer_dtype: Literal["Int32", "Int64"],
 ) -> None:
     dataframe = pd.DataFrame({"value": pd.Series(values, dtype=dtype)})
 
-    result = cast_all_columns_to_numeric(dataframe)
+    result = cast_all_columns_to_numeric(dataframe, integer_dtype=integer_dtype)
 
-    expected = pd.Series(values, name="value", dtype=expected_dtype)
+    expected = pd.Series(
+        values,
+        name="value",
+        dtype=integer_dtype if expected_dtype == "Int32" else expected_dtype,
+    )
     pd.testing.assert_series_equal(result["value"], expected)
 
 
@@ -270,7 +284,7 @@ def test_preserves_index_column_order_and_ignored_data() -> None:
     )
     original = dataframe.copy()
     expected = dataframe.copy()
-    expected["value"] = pd.Series([1, None], index=dataframe.index, dtype="Int64")
+    expected["value"] = pd.Series([1, None], index=dataframe.index, dtype="Int32")
 
     result = cast_all_columns_to_numeric(dataframe, ignore=["identifier"])
 
@@ -283,3 +297,85 @@ def test_parsing_error_identifies_column() -> None:
 
     with pytest.raises(ValueError, match=r"Column 'amount'.*Unable to parse"):
         cast_all_columns_to_numeric(dataframe)
+
+
+@pytest.mark.parametrize("prefer_integer", [True, False])
+@pytest.mark.parametrize("dtype", [None, "Int64"])
+def test_int32_boundaries_and_missing_values(
+    dtype: str | None, *, prefer_integer: bool
+) -> None:
+    values = [-(2**31), 2**31 - 1, None]
+    inputs = [str(value) if value is not None else None for value in values]
+    dataframe = pd.DataFrame(
+        {"value": pd.Series(inputs if dtype is None else values, dtype=dtype)}
+    )
+
+    result = cast_all_columns_to_numeric(dataframe, prefer_integer=prefer_integer)
+
+    expected = pd.Series(values, name="value", dtype="Int32")
+    pd.testing.assert_series_equal(result["value"], expected)
+
+
+@pytest.mark.parametrize("errors", ["raise", "coerce"])
+@pytest.mark.parametrize("prefer_integer", [True, False])
+@pytest.mark.parametrize("value", [-(2**31) - 1, 2**31, 2**63, 2**64 - 1])
+@pytest.mark.parametrize("as_string", [True, False])
+def test_int32_overflow(
+    value: int,
+    errors: Literal["raise", "coerce"],
+    *,
+    prefer_integer: bool,
+    as_string: bool,
+) -> None:
+    column = (
+        pd.Series([str(value), None])
+        if as_string
+        else pd.Series([value, None], dtype="UInt64" if value >= 2**63 else "Int64")
+    )
+    dataframe = pd.DataFrame({"count": column})
+    original = dataframe.copy()
+
+    with pytest.raises(OverflowError, match=r"Column 'count'.*Int32"):
+        cast_all_columns_to_numeric(
+            dataframe, errors=errors, prefer_integer=prefer_integer
+        )
+
+    pd.testing.assert_frame_equal(dataframe, original)
+
+
+@pytest.mark.parametrize("prefer_integer", [True, False])
+@pytest.mark.parametrize(
+    ("value", "can_be_integer"),
+    [
+        (float(-(2**31)), True),
+        (float(2**31 - 1), True),
+        (float(-(2**31) - 1), False),
+        (float(2**31), False),
+        (math.nextafter(float(2**31), -math.inf), False),
+        (math.inf, False),
+        (-math.inf, False),
+        (1.5, False),
+    ],
+)
+def test_int32_float_integer_inference(
+    value: float, *, can_be_integer: bool, prefer_integer: bool
+) -> None:
+    dataframe = pd.DataFrame({"value": pd.Series([value, None], dtype="Float64")})
+    integer_output = can_be_integer and prefer_integer
+
+    result = cast_all_columns_to_numeric(dataframe, prefer_integer=prefer_integer)
+
+    expected = pd.Series(
+        [int(value) if integer_output else value, None],
+        name="value",
+        dtype="Int32" if integer_output else "Float64",
+    )
+    pd.testing.assert_series_equal(result["value"], expected)
+
+
+@pytest.mark.parametrize("integer_dtype", ["int32", "Int16", "Float64", None])
+def test_validates_integer_dtype_on_empty_dataframe(integer_dtype: str | None) -> None:
+    invalid_dtype = cast("Literal['Int32', 'Int64']", integer_dtype)
+
+    with pytest.raises(ValueError, match="integer_dtype must be 'Int32' or 'Int64'"):
+        cast_all_columns_to_numeric(pd.DataFrame(), integer_dtype=invalid_dtype)
