@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.2 (2026-10-07)
+
+### Bug Fixes
+
+- Change default integer cast type
+  ([`2c8c612`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/2c8c612f6f84cad194aea3d260a5c4c306a4dc31))
+
+
 ## v1.4.1 (2026-10-07)
 
 ### Bug Fixes
