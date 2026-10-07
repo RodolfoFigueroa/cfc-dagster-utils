@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.1 (2026-10-07)
+
+### Bug Fixes
+
+- Improve numerical column casting
+  ([`ba1c608`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/ba1c608f2a596a381d5368a04d8cb06cb67169ae))
+
+
 ## v1.4.0 (2026-09-07)
 
 ### Features
