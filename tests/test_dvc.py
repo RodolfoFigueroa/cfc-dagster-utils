@@ -15,6 +15,31 @@ pytestmark = pytest.mark.filterwarnings(
 )
 
 
+@pytest.mark.parametrize(
+    "dvc_file",
+    [
+        "",
+        "input",
+        "input.csv",
+        "dvc.yaml",
+        "input.dvc.bak",
+        "input.DVC",
+        "data.dvc/input",
+    ],
+)
+def test_component_rejects_paths_without_dvc_extension(dvc_file: str) -> None:
+    with pytest.raises(ValueError, match=r"dvc_file must have a \.dvc extension"):
+        DvcInputComponent(key=dg.AssetKey("input_data"), dvc_file=dvc_file)
+
+
+@pytest.mark.parametrize("dvc_file", ["input.dvc", "data/input.csv.dvc"])
+def test_component_accepts_dvc_paths(tmp_path: Path, dvc_file: str) -> None:
+    for path in (dvc_file, str(tmp_path / dvc_file)):
+        component = DvcInputComponent(key=dg.AssetKey("input_data"), dvc_file=path)
+
+        assert component.dvc_file == path
+
+
 def _build_observation_job(
     project_root: Path,
     *,

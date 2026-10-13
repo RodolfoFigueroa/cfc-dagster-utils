@@ -157,6 +157,11 @@ class DvcInputComponent(dg.Component, dg.Resolvable, dg.Model):
     key: dg.ResolvedAssetKey
     dvc_file: str
 
+    def model_post_init(self, _context: object, /) -> None:
+        if Path(self.dvc_file).suffix != ".dvc":
+            msg = "dvc_file must have a .dvc extension"
+            raise ValueError(msg)
+
     def build_defs(self, context: dg.ComponentLoadContext) -> dg.Definitions:
         repository_root = context.project_root
         descriptor = repository_root / self.dvc_file
