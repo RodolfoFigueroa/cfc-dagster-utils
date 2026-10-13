@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.4.3 (2026-10-13)
+
+### Bug Fixes
+
+- Make DVC component validate file extension
+  ([`03639d2`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/03639d2d6a99f6061b53e3f5a465d4dc22c12a9f))
+
+
 ## v1.4.2 (2026-10-07)
 
 ### Bug Fixes
