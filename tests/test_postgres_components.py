@@ -48,3 +48,21 @@ def test_connection_component_creates_configured_resource() -> None:
 def test_connection_component_requires_distinct_resource_keys() -> None:
     with pytest.raises(ValueError, match="must be different"):
         _connection(resource_key="postgres", io_manager_key="postgres")
+
+
+@pytest.mark.parametrize("batch_size", [1, 250, 1000])
+def test_component_forwards_batch_size(batch_size: int) -> None:
+    component = _connection().model_copy(update={"batch_size": batch_size})
+    definitions = component.build_defs(MagicMock(spec=dg.ComponentLoadContext))
+    assert definitions.resources is not None
+    manager = definitions.resources["warehouse_manager"]
+    assert isinstance(manager, PostgresIOManager)
+    assert manager.batch_size == batch_size
+
+
+@pytest.mark.parametrize("value", [None, True, False, 0, -1, 1.5, "1000"])
+def test_component_rejects_invalid_batch_size(value: object) -> None:
+    config = _connection().model_dump()
+    config["batch_size"] = value
+    with pytest.raises(ValueError, match="positive integer"):
+        PostgresConnectionComponent.model_validate(config)

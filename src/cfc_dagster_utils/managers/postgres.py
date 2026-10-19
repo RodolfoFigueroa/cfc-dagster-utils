@@ -6,10 +6,19 @@ import pandas as pd
 import sqlalchemy
 
 from cfc_dagster_utils._optional import raise_optional_dependency_error
+from cfc_dagster_utils.managers._postgres import converted_rows, frame_columns
 from cfc_dagster_utils.resources import PostgresResource
 
 try:
+    from psycopg import sql
+except ModuleNotFoundError as error:
+    raise_optional_dependency_error(
+        error, import_name="psycopg", dependency_name="psycopg", extra="postgres"
+    )
+
+try:
     import dagster as dg
+    from pydantic import field_validator
 except ModuleNotFoundError as error:
     raise_optional_dependency_error(
         error,
@@ -18,21 +27,20 @@ except ModuleNotFoundError as error:
         extra="postgres",
     )
 
-try:
-    import geoalchemy2  # noqa: F401
-except ModuleNotFoundError as error:
-    raise_optional_dependency_error(
-        error,
-        import_name="geoalchemy2",
-        dependency_name="geoalchemy2",
-        extra="postgres",
-    )
-
 
 class PostgresIOManager(dg.ConfigurableIOManager):
     """Write pandas and GeoPandas outputs to PostgreSQL tables."""
 
     postgres_resource: dg.ResourceDependency[PostgresResource]
+    batch_size: int = 1000
+
+    @field_validator("batch_size", mode="before")
+    @classmethod
+    def validate_batch_size(cls, value: object) -> int:
+        if type(value) is not int or value <= 0:
+            msg = "batch_size must be a positive integer"
+            raise ValueError(msg)
+        return value
 
     @staticmethod
     def _destination(metadata: Mapping[str, Any]) -> tuple[str, str]:
@@ -70,24 +78,31 @@ class PostgresIOManager(dg.ConfigurableIOManager):
                 raise TypeError(msg)
             geometry_column = geometry_name
 
+        columns = frame_columns(obj)
+        destination = sqlalchemy.Table(
+            table,
+            sqlalchemy.MetaData(),
+            *(sqlalchemy.Column(column.name, column.sql_type) for column in columns),
+            schema=schema,
+        )
+        copy_statement = sql.SQL("COPY {} ({}) FROM STDIN").format(
+            sql.Identifier(schema, table),
+            sql.SQL(", ").join(sql.Identifier(column.name) for column in columns),
+        )
         with self.postgres_resource.begin() as conn:
             self._ensure_schema(conn, schema)
-            if isinstance(obj, gpd.GeoDataFrame):
-                obj.to_postgis(
-                    table,
-                    conn,
-                    schema=schema,
-                    if_exists="replace",
-                    index=False,
-                )
-            else:
-                obj.to_sql(
-                    table,
-                    conn,
-                    schema=schema,
-                    if_exists="replace",
-                    index=False,
-                )
+            destination.drop(conn, checkfirst=True)
+            destination.create(conn)
+            driver = conn.connection.driver_connection
+            if driver is None:
+                msg = "PostgreSQL connection has no driver connection"
+                raise RuntimeError(msg)
+            with driver.cursor() as cursor, cursor.copy(copy_statement) as copy:
+                for start in range(0, len(obj), self.batch_size):
+                    batch = obj.iloc[start : start + self.batch_size]
+                    for row in converted_rows(batch, columns):
+                        copy.write_row(row)
+                    del batch
 
         metadata: dict[str, str | int] = {
             "schema": schema,

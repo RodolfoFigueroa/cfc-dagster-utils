@@ -100,15 +100,128 @@ defs = dg.Definitions(
         "postgres_resource": postgres_resource,
         "postgres_io_manager": PostgresIOManager(
             postgres_resource=postgres_resource,
+            batch_size=1000,  # Positive integer; this is the default.
         ),
     },
 )
 ```
 
-GeoDataFrames use their active geometry column and CRS when written through
-`GeoDataFrame.to_postgis()`. The manager does not create constraints or explicitly
-manage indexes. Use a database transformation framework such as dbt for durable models,
-contracts, constraints, indexes, and SQL transformations.
+### Streaming writes and memory
 
-`PostgresIOManager` does not load tables into downstream Python assets. Use
-`PostgresResource.connect()` for an explicit database read when one is needed.
+Both DataFrames and GeoDataFrames use psycopg 3 `COPY`. The writer converts only
+one slice of at most `batch_size` rows at a time. It never builds full-frame
+object arrays, row dictionaries, geometry encodings, or CSV buffers. The input
+DataFrame remains in memory, so this bounds **additional serialization memory**,
+not the asset's preparation memory or total memory across concurrent assets.
+
+`batch_size` defaults to 1,000 and must be a positive integer (not a boolean,
+string, fractional number, or `None`). Lower it for especially wide rows or
+complex geometries. It limits rows, not bytes; a single very large value can
+still require substantial memory. PostgreSQL server memory is separate.
+
+The same option is available on `PostgresConnectionComponent`:
+
+```yaml
+type: cfc_dagster_utils.components.postgres.PostgresConnectionComponent
+attributes:
+  host: "{{ env.POSTGRES_HOST }}"
+  port: "{{ env.POSTGRES_PORT }}"
+  database: "{{ env.POSTGRES_DB }}"
+  user: "{{ env.POSTGRES_USER }}"
+  password: "{{ env.POSTGRES_PASSWORD }}"
+  batch_size: 1000
+```
+
+Schema creation, table replacement, and every batch are in one transaction.
+A failed conversion, COPY, or commit rolls back the operation; an existing table
+is restored rather than left partially populated. Successful Dagster output
+metadata is emitted only after commit. Replacement does not cascade through
+dependent tables or views.
+
+### Column types
+
+Types come from column dtypes, not the first batch or the first non-null row:
+
+| DataFrame dtype | PostgreSQL type |
+| --- | --- |
+| Boolean, including nullable | `BOOLEAN` |
+| Signed integer, or unsigned integer below 64 bits | `BIGINT` |
+| Unsigned 64-bit integer | `NUMERIC(20,0)` |
+| Floating point, including nullable | `DOUBLE PRECISION` |
+| Datetime without timezone | `TIMESTAMP` |
+| Datetime with timezone | `TIMESTAMPTZ` |
+| Timedelta | `BIGINT`, nanoseconds |
+| String, categorical, object | `TEXT` |
+| Geometry | Unconstrained PostGIS `geometry` |
+
+Missing values become SQL `NULL`; empty strings and floating-point infinities
+are preserved. Non-null scalar values in text columns are stringified, including
+object-typed numbers and dates. Explicitly cast numeric or datetime columns
+before writing when you want corresponding database types. Timestamp precision
+beyond microseconds is discarded to match PostgreSQL storage.
+
+Nested containers, complex numbers, and unsupported extension dtypes raise
+column-specific errors. Column names must be unique, nonempty strings. The
+DataFrame index is not written. A zero-row frame creates/replaces an empty table
+with the dtype-derived schema; zero-column frames are rejected.
+
+Every geometry-typed column is encoded in batches as EWKB using its own CRS.
+Mixed geometry types and dimensions, nulls, empty geometries, and all-null
+geometry columns are supported. LinearRings are stored as LineStrings. EPSG or
+ESRI authority identifiers with an exact match supply the SRID; a missing or
+unresolvable authority
+produces a warning and SRID 0. Coordinates are not reprojected.
+
+Geometry columns have no subtype, dimension, or SRID constraint. The SRID and
+coordinates are preserved in each geometry value, but catalog metadata such as
+`geometry_columns` does not establish a uniform column SRID. No indexes or
+constraints are created automatically. Use downstream models for spatial
+indexes and stricter geometry contracts.
+
+`PostgresIOManager` is output-only. Use `PostgresResource.connect()` for explicit
+reads into downstream Python assets.
+
+### Verification
+
+Run the required checks and full suite (including an XML coverage report):
+
+```shell
+uv sync --locked --all-extras
+uv run ruff format .
+uv run ruff check .
+uv run ty check
+uv run pytest --cov=cfc_dagster_utils --cov-report=term-missing --cov-report=xml
+```
+
+PostgreSQL tests require a **disposable** database with PostGIS enabled. They
+create unique schemas and remove them afterward. For example:
+
+```shell
+docker run --detach --rm --name cfc-postgres-tests \
+  --publish 127.0.0.1:55432:5432 \
+  --env POSTGRES_PASSWORD=cfc_test --env POSTGRES_DB=cfc_test \
+  postgis/postgis:17-3.5
+export CFC_TEST_POSTGRES_URL=postgresql+psycopg://postgres:cfc_test@localhost:55432/cfc_test
+export CFC_REQUIRE_POSTGRES_TESTS=1
+# Wait for pg_isready to report ready before running tests.
+docker exec cfc-postgres-tests pg_isready -U postgres
+uv run pytest -m postgres
+uv run python scripts/benchmark_postgres_memory.py
+docker stop cfc-postgres-tests
+```
+
+With `CFC_TEST_POSTGRES_URL` set, the full coverage command also runs the database
+tests. Without it they skip locally; setting `CFC_REQUIRE_POSTGRES_TESTS=1` makes
+missing configuration a failure. CI has a required PostGIS job with both set.
+The optional-dependency matrix command above remains part of verification.
+
+The Linux memory benchmark starts fresh worker processes, measures baseline RSS
+after building each input and initializing connections, then samples peak RSS
+while writing and checking the result. Defaults compare 10,000 and 100,000 rows
+for 200-column census-like frames and polygon GeoDataFrames, followed by both
+workloads writing concurrently. Each worker uses its own temporary schema.
+
+The benchmark passes when measured overhead stays below 128 MiB per worker and
+grows by at most 64 MiB between sizes. These are fixture regression thresholds,
+not a universal memory guarantee. `--batch-size`, `--columns`, and `--rows SMALL
+LARGE` allow further experiments. PostgreSQL server memory is not included.
