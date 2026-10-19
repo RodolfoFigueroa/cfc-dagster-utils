@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.5.0 (2026-10-19)
+
+### Features
+
+- Improve database writing
+  ([`1601573`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/16015734b2a0edb3c51f7940e308d1bfcff120f2))
+
+
 ## v1.4.3 (2026-10-13)
 
 ### Bug Fixes
