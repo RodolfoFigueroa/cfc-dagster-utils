@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.5.1 (2026-10-19)
+
+### Bug Fixes
+
+- Narrow type inference
+  ([`621b052`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/621b05272e9c1827da1a30906ead605f9946193b))
+
+
 ## v1.5.0 (2026-10-19)
 
 ### Features
