@@ -25,7 +25,19 @@ except ModuleNotFoundError as error:
     )
 
 
-UINT64_BYTES = 8
+NUMERIC_SQL_TYPES: dict[tuple[str, int], sa.types.TypeEngine] = {
+    ("i", 1): sa.SmallInteger(),
+    ("i", 2): sa.SmallInteger(),
+    ("i", 4): sa.Integer(),
+    ("i", 8): sa.BigInteger(),
+    ("u", 1): sa.SmallInteger(),
+    ("u", 2): sa.Integer(),
+    ("u", 4): sa.BigInteger(),
+    ("u", 8): sa.Numeric(20, 0),
+    ("f", 2): sa.REAL(),
+    ("f", 4): sa.REAL(),
+    ("f", 8): sa.Double(),
+}
 
 
 def text_value(value: object) -> str:
@@ -71,6 +83,16 @@ def geometry_srid(series: gpd.GeoSeries) -> int:
     return 0
 
 
+def numeric_column(name: str, series: pd.Series) -> Column:
+    dtype = series.dtype
+    sql_type = NUMERIC_SQL_TYPES.get((dtype.kind, getattr(dtype, "itemsize", None)))
+    if sql_type is None:
+        msg = f"Column {name!r}: unsupported numeric dtype {dtype}"
+        raise TypeError(msg)
+    convert = float if pt.is_float_dtype(dtype) else int
+    return Column(name, sql_type, convert)
+
+
 def column_spec(name: str, series: pd.Series) -> Column:
     dtype = series.dtype
     if isinstance(dtype, gpd.array.GeometryDtype):
@@ -86,20 +108,10 @@ def column_spec(name: str, series: pd.Series) -> Column:
         or pt.is_string_dtype(dtype)
     ):
         return Column(name, sa.Text(), text_value)
-    for predicate, sql_type, convert in (
-        (pt.is_bool_dtype, sa.Boolean(), bool),
-        (pt.is_float_dtype, sa.Double(), float),
-    ):
-        if predicate(dtype):
-            return Column(name, sql_type, convert)
-    if pt.is_integer_dtype(dtype):
-        sql_type = (
-            sa.Numeric(20, 0)
-            if pt.is_unsigned_integer_dtype(dtype)
-            and getattr(dtype, "itemsize", None) == UINT64_BYTES
-            else sa.BigInteger()
-        )
-        return Column(name, sql_type, int)
+    if pt.is_bool_dtype(dtype):
+        return Column(name, sa.Boolean(), bool)
+    if pt.is_integer_dtype(dtype) or pt.is_float_dtype(dtype):
+        return numeric_column(name, series)
     if pt.is_datetime64_any_dtype(dtype):
         timezone = getattr(dtype, "tz", None)
         if timezone is None:

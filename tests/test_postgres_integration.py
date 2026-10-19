@@ -6,10 +6,12 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import uuid4
 
 import dagster as dg
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import psycopg
 import pytest
@@ -18,6 +20,7 @@ from shapely import LinearRing, Point, Polygon
 
 from cfc_dagster_utils.managers.postgres import PostgresIOManager
 from cfc_dagster_utils.resources import PostgresResource
+from cfc_dagster_utils.utils import cast_all_columns_to_numeric
 
 pytestmark = pytest.mark.postgres
 WGS84 = 4326
@@ -235,3 +238,144 @@ def test_concurrent_writes(database: tuple[PostgresResource, str]) -> None:
             assert conn.execute(
                 sa.select(relation.c.id).order_by(relation.c.id)
             ).scalars().all() == list(range(100))
+
+
+@pytest.mark.parametrize(
+    ("dtype", "sql_type"),
+    [
+        ("int8", "SMALLINT"),
+        ("int16", "SMALLINT"),
+        ("int32", "INTEGER"),
+        ("int64", "BIGINT"),
+        ("uint8", "SMALLINT"),
+        ("uint16", "INTEGER"),
+        ("uint32", "BIGINT"),
+        ("uint64", "NUMERIC(20, 0)"),
+        ("Int8", "SMALLINT"),
+        ("Int16", "SMALLINT"),
+        ("Int32", "INTEGER"),
+        ("Int64", "BIGINT"),
+        ("UInt8", "SMALLINT"),
+        ("UInt16", "INTEGER"),
+        ("UInt32", "BIGINT"),
+        ("UInt64", "NUMERIC(20, 0)"),
+    ],
+)
+def test_integer_width_round_trip(
+    database: tuple[PostgresResource, str], dtype: str, sql_type: str
+) -> None:
+    resource, schema = database
+    limits = np.iinfo(dtype.lower())
+    values = [int(limits.min), 0, int(limits.max)]
+    if dtype[0].isupper():
+        values = [None, None, *values]
+    frame = pd.DataFrame(
+        {"id": range(len(values)), "value": pd.Series(values, dtype=dtype)}
+    )
+    _write(resource, schema, frame)
+    with resource.connect() as conn:
+        table = _relation(conn, schema)
+        assert str(table.c.value.type) == sql_type
+        assert (
+            conn.execute(sa.select(table.c.value).order_by(table.c.id)).scalars().all()
+            == values
+        )
+
+
+@pytest.mark.parametrize(
+    ("dtype", "sql_type"),
+    [
+        ("float16", "REAL"),
+        ("float32", "REAL"),
+        ("float64", "DOUBLE PRECISION"),
+        ("Float32", "REAL"),
+        ("Float64", "DOUBLE PRECISION"),
+    ],
+)
+def test_float_width_round_trip(
+    database: tuple[PostgresResource, str], dtype: str, sql_type: str
+) -> None:
+    resource, schema = database
+    limits = np.finfo(dtype.lower())
+    values = [
+        float("nan"),
+        float("nan"),
+        0.1,
+        -0.1,
+        limits.smallest_subnormal,
+        limits.max,
+        -limits.max,
+        float("inf"),
+        -float("inf"),
+    ]
+    frame = pd.DataFrame(
+        {"id": range(len(values)), "value": pd.Series(values, dtype=dtype)}
+    )
+    _write(resource, schema, frame)
+    with resource.connect() as conn:
+        table = _relation(conn, schema)
+        assert str(table.c.value.type) == sql_type
+        # Widen on the server so REAL's text display precision cannot affect comparison.
+        actual = (
+            conn.execute(
+                sa.select(sa.cast(table.c.value, sa.Double())).order_by(table.c.id)
+            )
+            .scalars()
+            .all()
+        )
+    assert actual[:2] == [None, None]
+    assert actual[2:] == [float(value) for value in frame["value"].iloc[2:]]
+
+
+@pytest.mark.parametrize(
+    ("dtype", "sql_type"),
+    [
+        ("Int8", "SMALLINT"),
+        ("Int16", "SMALLINT"),
+        ("Int32", "INTEGER"),
+        ("Int64", "BIGINT"),
+        ("UInt8", "SMALLINT"),
+        ("UInt16", "INTEGER"),
+        ("UInt32", "BIGINT"),
+        ("UInt64", "NUMERIC(20, 0)"),
+        ("Float32", "REAL"),
+        ("Float64", "DOUBLE PRECISION"),
+    ],
+)
+@pytest.mark.parametrize("rows", [0, 3])
+def test_missing_numeric_schema(
+    database: tuple[PostgresResource, str], dtype: str, sql_type: str, rows: int
+) -> None:
+    resource, schema = database
+    frame = pd.DataFrame({"value": pd.Series([None] * rows, dtype=dtype)})
+    _write(resource, schema, frame)
+    with resource.connect() as conn:
+        table = _relation(conn, schema)
+        assert str(table.c.value.type) == sql_type
+        assert conn.execute(sa.select(table.c.value)).all() == [(None,)] * rows
+
+
+@pytest.mark.parametrize(
+    ("integer_dtype", "sql_type"), [("Int32", "INTEGER"), ("Int64", "BIGINT")]
+)
+def test_numeric_cast_preserves_sql_width(
+    database: tuple[PostgresResource, str],
+    integer_dtype: Literal["Int32", "Int64"],
+    sql_type: str,
+) -> None:
+    resource, schema = database
+    source = pd.DataFrame({"count": [None, None, "0", "2147483647", "-2147483648"]})
+    frame = (
+        cast_all_columns_to_numeric(source)
+        if integer_dtype == "Int32"
+        else cast_all_columns_to_numeric(source, integer_dtype=integer_dtype)
+    )
+    assert str(frame["count"].dtype) == integer_dtype
+    frame["id"] = range(len(frame))
+    _write(resource, schema, frame)
+    with resource.connect() as conn:
+        table = _relation(conn, schema)
+        assert str(table.c.count.type) == sql_type
+        assert conn.execute(
+            sa.select(table.c.count).order_by(table.c.id)
+        ).scalars().all() == [None, None, 0, 2147483647, -2147483648]

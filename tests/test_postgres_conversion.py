@@ -18,7 +18,7 @@ WEB_MERCATOR = 3857
     [
         ("boolean", [True, None], "BOOLEAN", [(True,), (None,)]),
         ("bool", [True, False], "BOOLEAN", [(True,), (False,)]),
-        ("Int32", [2**31 - 1, None], "BIGINT", [(2**31 - 1,), (None,)]),
+        ("Int32", [2**31 - 1, None], "INTEGER", [(2**31 - 1,), (None,)]),
         ("Int64", [2**63 - 1, None], "BIGINT", [(2**63 - 1,), (None,)]),
         ("uint32", [2**32 - 1], "BIGINT", [(2**32 - 1,)]),
         ("UInt64", [2**64 - 1, None], "NUMERIC(20, 0)", [(2**64 - 1,), (None,)]),
@@ -28,7 +28,7 @@ WEB_MERCATOR = 3857
             "DOUBLE PRECISION",
             [(1.5,), (None,), (float("inf"),)],
         ),
-        ("float32", [1.5, float("nan")], "DOUBLE PRECISION", [(1.5,), (None,)]),
+        ("float32", [1.5, float("nan")], "REAL", [(1.5,), (None,)]),
         ("string", ["001", "", None], "TEXT", [("001",), ("",), (None,)]),
         ("object", [Decimal("1.23"), 42, None], "TEXT", [("1.23",), ("42",), (None,)]),
         ("category", ["a", "b", None], "TEXT", [("a",), ("b",), (None,)]),

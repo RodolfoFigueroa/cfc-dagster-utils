@@ -145,14 +145,27 @@ Types come from column dtypes, not the first batch or the first non-null row:
 | DataFrame dtype | PostgreSQL type |
 | --- | --- |
 | Boolean, including nullable | `BOOLEAN` |
-| Signed integer, or unsigned integer below 64 bits | `BIGINT` |
+| Signed 8/16-bit integer or unsigned 8-bit integer | `SMALLINT` |
+| Signed 32-bit integer or unsigned 16-bit integer | `INTEGER` |
+| Signed 64-bit integer or unsigned 32-bit integer | `BIGINT` |
 | Unsigned 64-bit integer | `NUMERIC(20,0)` |
-| Floating point, including nullable | `DOUBLE PRECISION` |
+| 16/32-bit floating point | `REAL` |
+| 64-bit floating point | `DOUBLE PRECISION` |
 | Datetime without timezone | `TIMESTAMP` |
 | Datetime with timezone | `TIMESTAMPTZ` |
 | Timedelta | `BIGINT`, nanoseconds |
 | String, categorical, object | `TEXT` |
 | Geometry | Unconstrained PostGIS `geometry` |
+
+Numeric widths apply equally to NumPy and pandas nullable dtypes: for example,
+`int32` and `Int32` both produce `INTEGER`, and `float32` and `Float32` both produce
+`REAL`. The default `Int32` output of `cast_all_columns_to_numeric` therefore
+remains 32-bit in PostgreSQL. Unsigned integers use a type large enough for their
+full range; 16-bit floats widen to `REAL` because PostgreSQL has no 16-bit float.
+Types are never downcast based on observed values. Unsupported numeric widths,
+including floats wider than 64 bits, raise a column-specific `TypeError` before
+connecting, avoiding silent precision loss. Existing tables receive the updated
+types on their next replacement materialization.
 
 Missing values become SQL `NULL`; empty strings and floating-point infinities
 are preserved. Non-null scalar values in text columns are stringified, including
