@@ -47,6 +47,3 @@ version_toml = ["pyproject.toml:project.version"]
 [tool.semantic_release.branches.master]
 match = "master"
 prerelease = false
-
-[tool.pytest.ini_options]
-markers = ["postgres: requires a disposable PostgreSQL/PostGIS database"]

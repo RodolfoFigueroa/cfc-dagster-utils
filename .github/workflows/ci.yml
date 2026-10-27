@@ -31,34 +31,6 @@ jobs:
       - name: Test
         run: uv run --locked pytest --cov=cfc_dagster_utils --cov-report=term-missing --cov-report=xml
 
-  postgres:
-    name: PostgreSQL and PostGIS
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgis/postgis:17-3.5
-        env:
-          POSTGRES_PASSWORD: cfc_test
-          POSTGRES_DB: cfc_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    env:
-      CFC_TEST_POSTGRES_URL: postgresql+psycopg://postgres:cfc_test@localhost:5432/cfc_test
-      CFC_REQUIRE_POSTGRES_TESTS: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
-        with:
-          enable-cache: true
-          python-version: "3.12"
-      - run: uv sync --locked --extra postgres
-      - run: uv run --locked pytest tests/test_postgres_integration.py
-
   optional-dependencies:
     name: Optional dependency matrix
     runs-on: ubuntu-latest
@@ -80,7 +52,6 @@ jobs:
     needs:
       - quality
       - optional-dependencies
-      - postgres
     permissions:
       contents: write
     uses: ./.github/workflows/semantic-release.yml

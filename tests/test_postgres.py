@@ -37,13 +37,19 @@ def _output_context(metadata: dict[str, object] | None = None) -> MagicMock:
     return context
 
 
-def _writer(batch_size: int = 1000) -> tuple[PostgresIOManager, MagicMock, MagicMock]:
+def _writer(
+    batch_size: int = 1000,
+) -> tuple[PostgresIOManager, MagicMock, MagicMock, MagicMock]:
     manager = PostgresIOManager(postgres_resource=_resource(), batch_size=batch_size)
     conn = MagicMock(spec=sqlalchemy.Connection)
     conn.dialect = postgresql.dialect()
     transaction = MagicMock(spec=AbstractContextManager)
     transaction.__enter__.return_value = conn
-    return manager, conn, transaction
+    setup_conn = MagicMock(spec=sqlalchemy.Connection)
+    setup_conn.dialect = postgresql.dialect()
+    setup = MagicMock(spec=AbstractContextManager)
+    setup.__enter__.return_value = setup_conn
+    return manager, conn, transaction, setup
 
 
 def _copy(conn: MagicMock) -> MagicMock:
@@ -97,7 +103,7 @@ def test_resource_builds_psycopg_url_and_disposes_engine() -> None:
     ],
 )
 def test_invalid_destination_does_not_connect(metadata: dict[str, object]) -> None:
-    manager, _, _ = _writer()
+    manager, _, _, _ = _writer()
     with (
         patch.object(PostgresResource, "begin") as begin,
         pytest.raises(ValueError, match="metadata"),
@@ -108,14 +114,14 @@ def test_invalid_destination_does_not_connect(metadata: dict[str, object]) -> No
 
 @pytest.mark.parametrize("size", [1, 2, 1000])
 def test_bounded_copy_and_metadata(size: int) -> None:
-    manager, conn, transaction = _writer(size)
+    manager, conn, transaction, setup = _writer(size)
     context = _output_context({"schema": 'custom " schema', "table": 'target " table'})
     frame = pd.DataFrame(
         {"id": range(5), 'quoted " column': [None, "", "a\nb", "á", "\\"]}
     )
     original = frame.copy(deep=True)
     with (
-        patch.object(PostgresResource, "begin", return_value=transaction),
+        patch.object(PostgresResource, "begin", side_effect=[setup, transaction]),
         patch(
             "cfc_dagster_utils.managers.postgres.converted_rows", wraps=converted_rows
         ) as convert,
@@ -155,13 +161,13 @@ def test_bounded_copy_and_metadata(size: int) -> None:
 
 
 def test_geometry_metadata_and_empty_output() -> None:
-    manager, conn, transaction = _writer()
+    manager, conn, transaction, setup = _writer()
     frame = gpd.GeoDataFrame(
         {"id": pd.Series(dtype="Int64")}, geometry=gpd.GeoSeries([], crs=4326)
     )
     frame.rename_geometry("geom", inplace=True)
     context = _output_context()
-    with patch.object(PostgresResource, "begin", return_value=transaction):
+    with patch.object(PostgresResource, "begin", side_effect=[setup, transaction]):
         manager.handle_output(context, frame)
     _copy(conn).write_row.assert_not_called()
     assert context.add_output_metadata.call_args.args[0]["geometry_column"] == "geom"
@@ -169,7 +175,7 @@ def test_geometry_metadata_and_empty_output() -> None:
 
 
 def test_geometry_column_requires_string_name() -> None:
-    manager, _, _ = _writer()
+    manager, _, _, _ = _writer()
     frame = gpd.GeoDataFrame({0: [Point(0, 0)]}, geometry=0, crs=4326)
     with (
         patch.object(PostgresResource, "begin") as begin,
@@ -180,11 +186,11 @@ def test_geometry_column_requires_string_name() -> None:
 
 
 def test_failure_rolls_back_without_success_metadata() -> None:
-    manager, conn, transaction = _writer(1)
+    manager, conn, transaction, setup = _writer(1)
     context = _output_context()
     _copy(conn).write_row.side_effect = [None, RuntimeError("write failed")]
     with (
-        patch.object(PostgresResource, "begin", return_value=transaction),
+        patch.object(PostgresResource, "begin", side_effect=[setup, transaction]),
         pytest.raises(RuntimeError, match="write failed"),
     ):
         manager.handle_output(context, pd.DataFrame({"id": [1, 2]}))
@@ -193,11 +199,11 @@ def test_failure_rolls_back_without_success_metadata() -> None:
 
 
 def test_commit_failure_has_no_success_metadata() -> None:
-    manager, _, transaction = _writer()
+    manager, _, transaction, setup = _writer()
     context = _output_context()
     transaction.__exit__.side_effect = RuntimeError("commit failed")
     with (
-        patch.object(PostgresResource, "begin", return_value=transaction),
+        patch.object(PostgresResource, "begin", side_effect=[setup, transaction]),
         pytest.raises(RuntimeError, match="commit failed"),
     ):
         manager.handle_output(context, pd.DataFrame({"id": [1]}))
@@ -213,7 +219,7 @@ def test_batch_size_is_strictly_positive_integer(value: object) -> None:
 
 
 def test_rejects_unknown_outputs_and_inputs() -> None:
-    manager, _, _ = _writer()
+    manager, _, _, _ = _writer()
     with (
         patch.object(PostgresResource, "begin") as begin,
         pytest.raises(TypeError, match="Unsupported"),
@@ -222,3 +228,47 @@ def test_rejects_unknown_outputs_and_inputs() -> None:
     begin.assert_not_called()
     with pytest.raises(NotImplementedError, match="output-only"):
         manager.load_input(MagicMock(spec=dg.InputContext))
+
+
+@pytest.mark.parametrize("failure", ["lock", "create", "commit"])
+def test_schema_setup_failure_prevents_table_write(failure: str) -> None:
+    manager, conn, transaction, setup = _writer()
+    context = _output_context()
+    error = RuntimeError("setup failed")
+    setup_conn = setup.__enter__.return_value
+    if failure == "commit":
+        setup.__exit__.side_effect = error
+    else:
+        setup_conn.execute.side_effect = [error] if failure == "lock" else [None, error]
+    with (
+        patch.object(
+            PostgresResource, "begin", side_effect=[setup, transaction]
+        ) as begin,
+        pytest.raises(RuntimeError, match="setup failed"),
+    ):
+        manager.handle_output(context, pd.DataFrame({"id": [1]}))
+    assert begin.call_count == 1
+    transaction.__enter__.assert_not_called()
+    conn.connection.driver_connection.cursor.assert_not_called()
+    context.add_output_metadata.assert_not_called()
+
+
+def test_schema_setup_commits_before_table_write() -> None:
+    manager, conn, transaction, setup = _writer()
+    setup_conn = setup.__enter__.return_value
+
+    def enter_write() -> MagicMock:
+        setup.__exit__.assert_called_once_with(None, None, None)
+        return conn
+
+    transaction.__enter__.side_effect = enter_write
+    with patch.object(PostgresResource, "begin", side_effect=[setup, transaction]):
+        manager.handle_output(
+            _output_context({"schema": 'custom " schema', "table": "target"}),
+            pd.DataFrame({"id": [1]}),
+        )
+    lock, create = setup_conn.execute.call_args_list
+    assert str(lock.args[0]) == "SELECT pg_advisory_xact_lock(:lock_id)"
+    assert lock.args[1] == {"lock_id": 2621279102301430195}
+    assert str(create.args[0]) == 'CREATE SCHEMA IF NOT EXISTS "custom "" schema"'
+    conn.execute.assert_not_called()
