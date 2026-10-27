@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from hashlib import sha256
 from typing import Any
 
 import geopandas as gpd
@@ -56,6 +57,13 @@ class PostgresIOManager(dg.ConfigurableIOManager):
 
     @staticmethod
     def _ensure_schema(conn: sqlalchemy.Connection, schema: str) -> None:
+        # Stable across worker processes; held only through schema setup's commit.
+        digest = sha256(f"cfc_dagster_utils:schema:{schema}".encode()).digest()
+        lock_id = int.from_bytes(digest[:8], byteorder="big", signed=True)
+        conn.execute(
+            sqlalchemy.text("SELECT pg_advisory_xact_lock(:lock_id)"),
+            {"lock_id": lock_id},
+        )
         quoted_schema = conn.dialect.identifier_preparer.quote_schema(schema)
         conn.execute(sqlalchemy.text(f"CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
 
@@ -91,6 +99,7 @@ class PostgresIOManager(dg.ConfigurableIOManager):
         )
         with self.postgres_resource.begin() as conn:
             self._ensure_schema(conn, schema)
+        with self.postgres_resource.begin() as conn:
             destination.drop(conn, checkfirst=True)
             destination.create(conn)
             driver = conn.connection.driver_connection
