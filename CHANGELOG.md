@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.5.2 (2026-10-27)
+
+### Bug Fixes
+
+- Fix race condition in schema creation
+  ([`c658708`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/c658708deeaf50e6f007986b930cb351e7871d1b))
+
+### Chores
+
+- Remove tests that ran against a live database
+  ([`6c2338e`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/6c2338ed5caccb7c6d08b9df38a132f5a704633d))
+
+- Simplify README
+  ([`b2c6ad3`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/b2c6ad30f4d65ab4ab6272083fef0bf4bc8f9b85))
+
+
 ## v1.5.1 (2026-10-19)
 
 ### Bug Fixes
