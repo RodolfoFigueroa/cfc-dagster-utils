@@ -25,6 +25,7 @@ dev = [
     "ipykernel<7",
     "mypy>=1.19.1",
     "pre-commit>=4.5.1",
+    "pyarrow>=26.0.1",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.1",

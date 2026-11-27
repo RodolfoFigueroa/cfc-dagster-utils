@@ -1,8 +1,9 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow as pa
 import pytest
 from shapely import LinearRing, Point, Polygon, from_wkb, get_srid, has_z
 from sqlalchemy.dialects import postgresql
@@ -31,6 +32,23 @@ WEB_MERCATOR = 3857
         ("float32", [1.5, float("nan")], "REAL", [(1.5,), (None,)]),
         ("string", ["001", "", None], "TEXT", [("001",), ("",), (None,)]),
         ("object", [Decimal("1.23"), 42, None], "TEXT", [("1.23",), ("42",), (None,)]),
+        ("object", [], "TEXT", []),
+        ("object", [None, pd.NA, pd.NaT], "TEXT", [(None,), (None,), (None,)]),
+        ("object", ["2024-11-01"], "TEXT", [("2024-11-01",)]),
+        (
+            "object",
+            [date(2024, 11, 1), pd.Timestamp("2024-11-02 17:30")],
+            "TEXT",
+            [("2024-11-01",), ("2024-11-02 17:30:00",)],
+        ),
+        (
+            "object",
+            [pd.NaT, date(2024, 11, 1), pd.NA],
+            "DATE",
+            [(None,), (date(2024, 11, 1),), (None,)],
+        ),
+        ("datetime64[ns]", [pd.NaT], "TIMESTAMP WITHOUT TIME ZONE", [(None,)]),
+        ("datetime64[ns, UTC]", [pd.NaT], "TIMESTAMP WITH TIME ZONE", [(None,)]),
         ("category", ["a", "b", None], "TEXT", [("a",), ("b",), (None,)]),
         ("category", [True, False, None], "TEXT", [("True",), ("False",), (None,)]),
         ("category", [1, 2, None], "TEXT", [("1",), ("2",), (None,)]),
@@ -64,6 +82,23 @@ def test_dtype_mapping_and_conversion(
     columns = frame_columns(frame)
     assert str(columns[0].sql_type.compile(dialect=postgresql.dialect())) == sql_type
     assert list(converted_rows(frame, columns)) == expected
+
+
+def test_python_dates_from_datetime_series() -> None:
+    dates = pd.to_datetime(pd.Series(["2024-11-01", None])).dt.date
+    frame = pd.DataFrame({"fecha_alta": dates})
+    columns = frame_columns(frame)
+    assert str(columns[0].sql_type.compile(dialect=postgresql.dialect())) == "DATE"
+    assert list(converted_rows(frame, columns)) == [(date(2024, 11, 1),), (None,)]
+
+
+@pytest.mark.parametrize("dtype", [pa.date32(), pa.date64()])
+@pytest.mark.parametrize("values", [[], [None], [None, date(2024, 11, 1)]])
+def test_arrow_dates(dtype: pa.DataType, values: list[date | None]) -> None:
+    frame = pd.DataFrame({"value": pd.Series(values, dtype=pd.ArrowDtype(dtype))})
+    columns = frame_columns(frame)
+    assert str(columns[0].sql_type.compile(dialect=postgresql.dialect())) == "DATE"
+    assert list(converted_rows(frame, columns)) == [(value,) for value in values]
 
 
 @pytest.mark.parametrize("dtype", ["Int64", "Float64", "boolean", "string", "object"])

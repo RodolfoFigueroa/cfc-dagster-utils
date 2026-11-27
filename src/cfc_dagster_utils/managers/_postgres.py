@@ -3,7 +3,8 @@
 import warnings
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from importlib import import_module
 from typing import Any
 
 import geopandas as gpd
@@ -42,6 +43,33 @@ NUMERIC_SQL_TYPES: dict[tuple[str, int], sa.types.TypeEngine] = {
 
 def text_value(value: object) -> str:
     return str(value)
+
+
+def is_date_only(value: object) -> bool:
+    return isinstance(value, date) and not isinstance(value, datetime)
+
+
+def date_value(value: object) -> object:
+    if not is_date_only(value):
+        msg = "Expected a date-only scalar"
+        raise TypeError(msg)
+    return value
+
+
+def is_date_column(series: pd.Series) -> bool:
+    dtype = series.dtype
+    if isinstance(dtype, pd.ArrowDtype):
+        return import_module("pyarrow.types").is_date(dtype.pyarrow_dtype)
+    if not pt.is_object_dtype(dtype):
+        return False
+
+    found_date = False
+    for value in series:
+        if is_date_only(value):
+            found_date = True
+        elif not pt.is_scalar(value) or not pd.isna(value):
+            return False
+    return found_date
 
 
 def timestamp_value(value: object) -> object:
@@ -93,6 +121,22 @@ def numeric_column(name: str, series: pd.Series) -> Column:
     return Column(name, sql_type, convert)
 
 
+def temporal_column(name: str, series: pd.Series) -> Column | None:
+    dtype = series.dtype
+    if is_date_column(series):
+        return Column(name, sa.Date(), date_value)
+    if pt.is_datetime64_any_dtype(dtype):
+        timezone = getattr(dtype, "tz", None)
+        if timezone is None:
+            timezone = getattr(getattr(dtype, "pyarrow_dtype", None), "tz", None)
+        return Column(
+            name, sa.TIMESTAMP(timezone=timezone is not None), timestamp_value
+        )
+    if pt.is_timedelta64_dtype(dtype):
+        return Column(name, sa.BigInteger(), duration_value)
+    return None
+
+
 def column_spec(name: str, series: pd.Series) -> Column:
     dtype = series.dtype
     if isinstance(dtype, gpd.array.GeometryDtype):
@@ -102,6 +146,9 @@ def column_spec(name: str, series: pd.Series) -> Column:
             text_value,
             geometry_srid(gpd.GeoSeries(series)),
         )
+    temporal = temporal_column(name, series)
+    if temporal is not None:
+        return temporal
     if (
         isinstance(dtype, (pd.StringDtype, pd.CategoricalDtype))
         or pt.is_object_dtype(dtype)
@@ -112,15 +159,6 @@ def column_spec(name: str, series: pd.Series) -> Column:
         return Column(name, sa.Boolean(), bool)
     if pt.is_integer_dtype(dtype) or pt.is_float_dtype(dtype):
         return numeric_column(name, series)
-    if pt.is_datetime64_any_dtype(dtype):
-        timezone = getattr(dtype, "tz", None)
-        if timezone is None:
-            timezone = getattr(getattr(dtype, "pyarrow_dtype", None), "tz", None)
-        return Column(
-            name, sa.TIMESTAMP(timezone=timezone is not None), timestamp_value
-        )
-    if pt.is_timedelta64_dtype(dtype):
-        return Column(name, sa.BigInteger(), duration_value)
     msg = f"Column {name!r}: unsupported dtype {dtype}"
     raise TypeError(msg)
 

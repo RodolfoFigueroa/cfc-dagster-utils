@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from contextlib import AbstractContextManager
+from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -60,12 +61,12 @@ def _copy(conn: MagicMock) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def mock_ddl() -> Iterator[None]:
+def mock_ddl() -> Iterator[MagicMock]:
     with (
         patch.object(sqlalchemy.Table, "drop"),
-        patch.object(sqlalchemy.Table, "create"),
+        patch.object(sqlalchemy.Table, "create", autospec=True) as create,
     ):
-        yield
+        yield create
 
 
 def test_resource_builds_psycopg_url_and_disposes_engine() -> None:
@@ -110,6 +111,20 @@ def test_invalid_destination_does_not_connect(metadata: dict[str, object]) -> No
     ):
         manager.handle_output(_output_context(metadata), pd.DataFrame({"id": [1]}))
     begin.assert_not_called()
+
+
+def test_date_after_null_copy_batch(mock_ddl: MagicMock) -> None:
+    manager, conn, transaction, setup = _writer(batch_size=1)
+    registration = date(2024, 11, 1)
+    frame = pd.DataFrame({"fecha_alta": [None, registration]})
+    with patch.object(PostgresResource, "begin", side_effect=[setup, transaction]):
+        manager.handle_output(_output_context(), frame)
+
+    mock_ddl.assert_called_once()
+    table = mock_ddl.call_args.args[0]
+    assert str(table.c.fecha_alta.type.compile(dialect=conn.dialect)) == "DATE"
+    rows = [call.args[0] for call in _copy(conn).write_row.call_args_list]
+    assert rows == [(None,), (registration,)]
 
 
 @pytest.mark.parametrize("size", [1, 2, 1000])
