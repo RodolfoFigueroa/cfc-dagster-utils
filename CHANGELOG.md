@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.5.3 (2026-11-27)
+
+### Bug Fixes
+
+- Improve automatic date parsing
+  ([`6e13ef1`](https://github.com/RodolfoFigueroa/cfc-dagster-utils/commit/6e13ef11524bc3a047ceacf3ae0e3910394ebfea))
+
+
 ## v1.5.2 (2026-10-27)
 
 ### Bug Fixes
